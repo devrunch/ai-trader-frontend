@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { addHolding } from "@/lib/portfolioStore";
+import { placePaperOrder, getSignalsBySymbol, type ApiSignal } from "@/lib/api";
 
 /* ─── Stock database ─── */
 const STOCKS: Record<string, {
@@ -157,18 +157,30 @@ export default function StockPage() {
   const symbol  = (params?.symbol as string ?? "").toUpperCase();
   const stock   = STOCKS[symbol];
 
-  const [period, setPeriod]     = useState("1D");
-  const [tab, setTab]           = useState<"BUY" | "SELL">("BUY");
+  const [period, setPeriod]       = useState("1D");
+  const [tab, setTab]             = useState<"BUY" | "SELL">("BUY");
   const [orderType, setOrderType] = useState<"Delivery" | "Intraday" | "MTF">("Delivery");
-  const [qty, setQty]           = useState("");
-  const [price, setPrice]       = useState("");
+  const [qty, setQty]             = useState("");
+  const [price, setPrice]         = useState("");
   const [priceMode, setPriceMode] = useState<"Limit" | "Market">("Limit");
-  const [step, setStep]         = useState<"form" | "confirm" | "success">("form");
-  const [infoTab, setInfoTab]   = useState("About");
+  const [step, setStep]           = useState<"form" | "confirm" | "success" | "error">("form");
+  const [orderErr, setOrderErr]   = useState("");
+  const [infoTab, setInfoTab]     = useState("About");
+  const [aiSignal, setAiSignal]   = useState<ApiSignal | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     if (stock) setPrice(stock.price.toFixed(2));
   }, [symbol, stock]);
+
+  useEffect(() => {
+    if (infoTab !== "AI Analysis") return;
+    setAiLoading(true);
+    getSignalsBySymbol(symbol)
+      .then(sigs => setAiSignal(sigs[0] ?? null))
+      .catch(() => setAiSignal(null))
+      .finally(() => setAiLoading(false));
+  }, [infoTab, symbol]);
 
   if (!stock) {
     return (
@@ -188,21 +200,26 @@ export default function StockPage() {
   const orderTotal = qty && price ? (parseFloat(qty) * parseFloat(price)).toFixed(2) : "0.00";
   const isBuy      = tab === "BUY";
 
-  function handleConfirm() {
-    addHolding({
-      symbol,
-      name: stock.name,
-      qty: parseFloat(qty),
-      avgPrice: parseFloat(price),
-      exchange: stock.exchange,
-      type: orderType === "MTF" ? "Delivery" : orderType,
-    });
-    setStep("success");
-    setTimeout(() => {
-      setStep("form");
-      setQty("");
-      setPrice(stock.price.toFixed(2));
-    }, 2800);
+  async function handleConfirm() {
+    try {
+      await placePaperOrder({
+        symbol,
+        exchange: stock.exchange,
+        side: tab,
+        quantity: parseInt(qty),
+        limitPrice: priceMode === "Limit" ? parseFloat(price) : undefined,
+      });
+      setStep("success");
+      setTimeout(() => {
+        setStep("form");
+        setQty("");
+        setPrice(stock.price.toFixed(2));
+      }, 2800);
+    } catch (err) {
+      setOrderErr(err instanceof Error ? err.message : "Order failed");
+      setStep("error");
+      setTimeout(() => { setStep("form"); setOrderErr(""); }, 3000);
+    }
   }
 
   return (
@@ -322,38 +339,48 @@ export default function StockPage() {
                 <p className="text-[#6b7280] text-sm leading-relaxed">{stock.about}</p>
               )}
               {infoTab === "AI Analysis" && (
-                <div className="space-y-3">
-                  <div className={`flex items-center gap-3 p-3 rounded-xl border ${stock.up ? "bg-[#00b386]/5 border-[#00b386]/20" : "bg-[#e84040]/5 border-[#e84040]/20"}`}>
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${stock.up ? "bg-[#00b386]/10" : "bg-[#e84040]/10"}`}>
-                      {stock.up
-                        ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00b386" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-                        : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e84040" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
-                      }
-                    </div>
-                    <div>
-                      <div className={`font-bold ${stock.up ? "text-[#00b386]" : "text-[#e84040]"}`}>
-                        {stock.up ? "BUY Signal" : "SELL Signal"} · {stock.pct.toFixed(0)}% confidence
-                      </div>
-                      <div className="text-[#6b7280] text-xs mt-0.5">
-                        {stock.up
-                          ? `Technical confluence on 15m chart. RSI at 62, VWAP above, EMA golden cross. Positive sector momentum.`
-                          : `Bearish reversal pattern detected. RSI overbought at 74. Negative news sentiment detected.`}
-                      </div>
-                    </div>
+                aiLoading ? (
+                  <div className="py-6 text-center text-[#9ca3af] text-sm">Loading AI analysis…</div>
+                ) : !aiSignal ? (
+                  <div className="py-6 text-center text-[#9ca3af] text-sm">
+                    No AI signal generated for {symbol} yet.<br />
+                    <span className="text-xs">Screener runs every 15 min during market hours.</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
-                    {[
-                      { l: "Entry",     v: `₹${stock.price.toFixed(2)}`, c: "text-[#1a1a1a]"         },
-                      { l: "Target",    v: `₹${(stock.price * 1.018).toFixed(2)}`, c: "text-[#00b386]" },
-                      { l: "Stop Loss", v: `₹${(stock.price * 0.992).toFixed(2)}`, c: "text-[#e84040]" },
-                    ].map((i) => (
-                      <div key={i.l} className="bg-[#f8f9fa] border border-[#e8e8e8] rounded-lg p-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                        <div className="text-[#6b7280] mb-1">{i.l}</div>
-                        <div className={`font-mono font-bold ${i.c}`}>{i.v}</div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className={`flex items-start gap-3 p-3 rounded-xl border ${aiSignal.direction === "BUY" ? "bg-[#00b386]/5 border-[#00b386]/20" : "bg-[#e84040]/5 border-[#e84040]/20"}`}>
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${aiSignal.direction === "BUY" ? "bg-[#00b386]/10" : "bg-[#e84040]/10"}`}>
+                        {aiSignal.direction === "BUY"
+                          ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00b386" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                          : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e84040" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
+                        }
                       </div>
-                    ))}
+                      <div>
+                        <div className={`font-bold text-sm ${aiSignal.direction === "BUY" ? "text-[#00b386]" : "text-[#e84040]"}`}>
+                          {aiSignal.direction} Signal · {Math.round(aiSignal.confidence * 100)}% confidence
+                        </div>
+                        <div className="text-[#6b7280] text-xs mt-1 leading-relaxed">{aiSignal.reasoning}</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      {[
+                        { l: "Entry",     v: `₹${aiSignal.entryPrice}`,  c: "text-[#1a1a1a]"  },
+                        { l: "Target",    v: `₹${aiSignal.targetPrice}`, c: "text-[#00b386]"  },
+                        { l: "Stop Loss", v: `₹${aiSignal.stopLoss}`,    c: "text-[#e84040]"  },
+                      ].map(x => (
+                        <div key={x.l} className="bg-[#f8f9fa] border border-[#e8e8e8] rounded-lg p-2.5">
+                          <div className="text-[#9ca3af] text-[10px] mb-0.5">{x.l}</div>
+                          <div className={`font-mono font-bold text-sm ${x.c}`}>{x.v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => { setTab(aiSignal.direction as "BUY" | "SELL"); setPrice(String(aiSignal.entryPrice)); setQty("1"); }}
+                      className={`w-full py-2 rounded-lg text-xs font-semibold text-white transition-colors ${aiSignal.direction === "BUY" ? "bg-[#00b386] hover:bg-[#009e78]" : "bg-[#e84040] hover:bg-[#cc3535]"}`}>
+                      Use this signal → Paper {aiSignal.direction}
+                    </button>
                   </div>
-                </div>
+                )
               )}
               {infoTab === "News" && (
                 <div className="space-y-3">
@@ -575,18 +602,29 @@ export default function StockPage() {
 
       {/* ── Success Toast ── */}
       {step === "success" && (
-        <div className="fixed bottom-6 right-6 z-50 bg-white border border-[#00b386]/50 rounded-2xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-3 min-w-64 animate-[fade-in-up_0.3s_ease-out]">
+        <div className="fixed bottom-6 right-6 z-50 bg-white border border-[#00b386]/50 rounded-2xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-3 min-w-64">
           <div className="w-10 h-10 rounded-full bg-[#00b386]/20 flex items-center justify-center shrink-0">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00b386" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
           <div>
-            <div className="text-[#1a1a1a] font-bold text-sm">Order Placed!</div>
-            <div className="text-[#6b7280] text-xs mt-0.5">
-              {tab} {qty} × {stock.name} @ ₹{price}
-            </div>
-            <Link href="/dashboard/portfolio" className="text-[#00b386] text-xs hover:underline">
-              View in Portfolio →
+            <div className="text-[#1a1a1a] font-bold text-sm">Paper Order Placed!</div>
+            <div className="text-[#6b7280] text-xs mt-0.5">{tab} {qty} × {symbol} @ ₹{price}</div>
+            <Link href="/dashboard/paper-trade" className="text-[#00b386] text-xs hover:underline">
+              View in Paper Trade →
             </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ── Error Toast ── */}
+      {step === "error" && (
+        <div className="fixed bottom-6 right-6 z-50 bg-white border border-[#e84040]/50 rounded-2xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-3 min-w-64">
+          <div className="w-10 h-10 rounded-full bg-[#e84040]/10 flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e84040" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
+          <div>
+            <div className="text-[#1a1a1a] font-bold text-sm">Order Failed</div>
+            <div className="text-[#e84040] text-xs mt-0.5">{orderErr}</div>
           </div>
         </div>
       )}
