@@ -2,10 +2,28 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+async function isAuthenticated(req: NextRequest): Promise<boolean> {
+  const cookie = req.cookies.get("access_token")?.value;
+  if (!cookie) return false;
+  try {
+    const res = await fetch(`${API_URL}/api/auth/me`, {
+      headers: { Cookie: `access_token=${cookie}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });
+  }
+
+  if (!(await isAuthenticated(req))) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { messages } = await req.json();

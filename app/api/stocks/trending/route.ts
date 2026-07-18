@@ -1,12 +1,32 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { NextRequest } from "next/server";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export const dynamic = "force-dynamic";
+// Cache for 1 hour — avoids an Opus call on every dashboard load
+export const revalidate = 3600;
 
-export async function GET() {
+async function isAuthenticated(req: NextRequest): Promise<boolean> {
+  const cookie = req.cookies.get("access_token")?.value;
+  if (!cookie) return false;
+  try {
+    const res = await fetch(`${API_URL}/api/auth/me`, {
+      headers: { Cookie: `access_token=${cookie}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function GET(req: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });
+  }
+
+  if (!(await isAuthenticated(req))) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -26,13 +46,11 @@ Rules: signal = BUY | SELL | WATCH. risk = Low | Medium | High. Mix large-cap an
       ],
     });
 
-    // With adaptive thinking, reasoning is in "thinking" blocks; text block is the JSON
     const textBlock = response.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") {
       throw new Error("No text block in response");
     }
 
-    // Strip any accidental code fences and extract the JSON object
     const stripped = textBlock.text.replace(/```[a-z]*\n?|\n?```/g, "").trim();
     const jsonMatch = stripped.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error(`No JSON object found. Raw: ${stripped.slice(0, 200)}`);
