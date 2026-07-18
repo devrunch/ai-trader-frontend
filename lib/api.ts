@@ -104,6 +104,61 @@ export const getPaperPositions = () =>
 export const getPaperOrders = () =>
   req<ApiOrder[]>("/api/paper/orders");
 
+/* ── Market data ── */
+export interface ApiIndex {
+  name: string;
+  ltp: number;
+  change: number;
+  change_percent: number;
+}
+
+export interface ApiMarketStatus {
+  nse_open: boolean;
+  timestamp: string;
+  nifty50: { ltp: number | null; change_percent: number | null };
+  sensex:  { ltp: number | null; change_percent: number | null };
+}
+
+export interface ApiNewsItem {
+  id: string;
+  headline: string;
+  description: string;
+  source: string;
+  url: string;
+  publishedAt: string;
+  sentiment: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
+  sentimentScore: number;
+  symbols: string[];
+}
+
+export interface ApiOhlcBar {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export const getMarketStatus = () =>
+  req<ApiMarketStatus>("/api/market/status");
+
+export const getMarketNews = (symbols?: string, limit = 15) => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (symbols) params.set("symbols", symbols);
+  return req<{ articles: ApiNewsItem[]; count: number }>(`/api/market/news?${params}`);
+};
+
+export const getQuote = (symbol: string, exchange = "NSE") =>
+  req<{ ltp: number; change: number; change_percent: number; symbol: string }>(
+    `/api/market/quote/${symbol}?exchange=${exchange}`
+  );
+
+export const getHistorical = (symbol: string, exchange = "NSE", interval = "15m", days = 30) =>
+  req<{ bars: ApiOhlcBar[] }>(
+    `/api/market/historical/${symbol}?exchange=${exchange}&interval=${interval}&days=${days}`
+  );
+
 export const placePaperOrder = (body: {
   symbol: string;
   exchange: string;

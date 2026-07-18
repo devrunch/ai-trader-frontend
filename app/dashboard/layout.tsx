@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
+import { getMarketStatus, type ApiMarketStatus } from "@/lib/api";
 
 const IC = {
   bell:     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
@@ -16,15 +18,21 @@ const TABS = [
   { href: "/dashboard/charts",        label: "Charts"      },
 ];
 
-/* Static indices — will wire to a market data API later */
-const INDICES = [
-  { name: "NIFTY",     value: "23,393.25", change: "-90.30",  pct: "0.38%", up: false },
-  { name: "SENSEX",    value: "74,294.98", change: "-354.86", pct: "0.48%", up: false },
-  { name: "BANKNIFTY", value: "54,149.20", change: "+434.55", pct: "0.81%", up: true  },
-];
+
+function fmt(n: number | null | undefined) {
+  if (n == null) return "—";
+  return n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [mkt, setMkt] = useState<ApiMarketStatus | null>(null);
+
+  useEffect(() => {
+    getMarketStatus().then(setMkt).catch(() => {});
+    const id = setInterval(() => getMarketStatus().then(setMkt).catch(() => {}), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   function isActive(href: string, label: string) {
     if (label === "Overview") return pathname === "/dashboard";
@@ -51,12 +59,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex-1" />
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* Market status */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#e8f9f4] border border-[#00b386]/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00b386] animate-pulse" />
-            <span className="text-[#00b386] text-xs font-semibold">Market Open</span>
-          </div>
-
           <button className="relative p-2 text-[#6b7280] hover:text-[#1a1a1a] transition-colors">
             {IC.bell}
           </button>
@@ -92,16 +94,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* ── Indices bar ── */}
       <div className="bg-white border-b border-[#e8e8e8] shrink-0">
         <div className="flex items-stretch min-w-max h-9">
-          {INDICES.map((idx, i) => (
-            <div key={idx.name}
-              className={`flex items-center gap-2 px-5 ${i > 0 ? "border-l border-[#f0f0f0]" : "pl-6 sm:pl-10"}`}>
-              <span className="text-[#6b7280] text-xs font-medium">{idx.name}</span>
-              <span className="text-[#1a1a1a] text-xs font-semibold font-mono">{idx.value}</span>
-              <span className={`text-xs font-semibold ${idx.up ? "text-[#00b386]" : "text-[#e84040]"}`}>
-                {idx.change} ({idx.pct})
+          {[
+            { name: "NIFTY 50", ltp: mkt?.nifty50?.ltp, pct: mkt?.nifty50?.change_percent },
+            { name: "SENSEX",   ltp: mkt?.sensex?.ltp,  pct: mkt?.sensex?.change_percent  },
+          ].map((idx, i) => {
+            const up = (idx.pct ?? 0) >= 0;
+            return (
+              <div key={idx.name}
+                className={`flex items-center gap-2 px-5 ${i > 0 ? "border-l border-[#f0f0f0]" : "pl-6 sm:pl-10"}`}>
+                <span className="text-[#6b7280] text-xs font-medium">{idx.name}</span>
+                <span className="text-[#1a1a1a] text-xs font-semibold font-mono">
+                  {idx.ltp != null ? `₹${fmt(idx.ltp)}` : "—"}
+                </span>
+                {idx.pct != null && (
+                  <span className={`text-xs font-semibold ${up ? "text-[#00b386]" : "text-[#e84040]"}`}>
+                    {up ? "+" : ""}{idx.pct.toFixed(2)}%
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {/* Market status pill */}
+          {mkt && (
+            <div className="flex items-center px-4 border-l border-[#f0f0f0]">
+              <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                mkt.nse_open ? "bg-[#e8f9f4] text-[#00b386]" : "bg-[#f5f5f5] text-[#9ca3af]"
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${mkt.nse_open ? "bg-[#00b386] animate-pulse" : "bg-[#9ca3af]"}`} />
+                {mkt.nse_open ? "Market Open" : "Market Closed"}
               </span>
             </div>
-          ))}
+          )}
         </div>
       </div>
 

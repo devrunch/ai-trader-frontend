@@ -1,19 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getMarketNews, type ApiNewsItem } from "@/lib/api";
 
-/* ─── Types ─── */
-interface NewsItem {
-  id: string;
-  headline: string;
-  source: string;
-  publishedAt: string;
-  url: string;
-  symbols: string[];
-  sentiment: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
-  sentimentScore: number; // -1 to 1
-  summary: string;
-}
+type NewsItem = ApiNewsItem;
 
 interface SentimentBar {
   label: string;
@@ -34,15 +24,6 @@ function SentimentBadge({ s }: { s: "POSITIVE" | "NEGATIVE" | "NEUTRAL" }) {
   );
 }
 
-/* ─── Placeholder data (NewsAPI not wired yet) ─── */
-const PLACEHOLDER: NewsItem[] = [
-  { id:"1", headline:"RBI holds repo rate at 6.5% for sixth consecutive meeting", source:"Mint", publishedAt:"2 hrs ago", url:"#", symbols:["HDFCBANK","ICICIBANK","SBIN"], sentiment:"POSITIVE", sentimentScore:0.62, summary:"RBI's status quo boosts banking sector sentiment as rate stability supports NIM expansion for lenders." },
-  { id:"2", headline:"Reliance Industries Q4 net profit rises 8% YoY to ₹21,423 Cr", source:"ET Markets", publishedAt:"4 hrs ago", url:"#", symbols:["RELIANCE"], sentiment:"POSITIVE", sentimentScore:0.78, summary:"Jio subscriber growth and retail EBITDA expansion drove strong quarterly performance. Refining margins remained stable." },
-  { id:"3", headline:"India VIX surges 12% amid global risk-off; FIIs sell ₹3,200 Cr", source:"NSE", publishedAt:"5 hrs ago", url:"#", symbols:["NIFTY","BANKNIFTY"], sentiment:"NEGATIVE", sentimentScore:-0.55, summary:"Rising geopolitical tensions and US Fed hawkish tone triggered broad-based selling in mid- and small-cap indices." },
-  { id:"4", headline:"Infosys cuts FY25 revenue guidance to 1–3% citing weak macro", source:"Reuters", publishedAt:"6 hrs ago", url:"#", symbols:["INFY","TCS","WIPRO"], sentiment:"NEGATIVE", sentimentScore:-0.71, summary:"IT sector headwinds persist as BFSI and telecom verticals delay discretionary spends. Management cautious on deal ramp-ups." },
-  { id:"5", headline:"Tata Motors EV sales hit record 10,000 units in June", source:"Business Standard", publishedAt:"7 hrs ago", url:"#", symbols:["TATAMOTORS"], sentiment:"POSITIVE", sentimentScore:0.84, summary:"Strong domestic EV demand driven by Nexon and Punch models. Export pipeline for Jaguar Land Rover improving QoQ." },
-  { id:"6", headline:"SEBI proposes tighter F&O margin rules for retail traders", source:"SEBI", publishedAt:"1 day ago", url:"#", symbols:["NIFTY"], sentiment:"NEUTRAL", sentimentScore:0.05, summary:"New framework aims to curb retail speculation in options. Institutional volumes expected to be unaffected." },
-];
 
 const SENTIMENT_BARS: SentimentBar[] = [
   { label: "Nifty 50",   bull: 62, bear: 24, neutral: 14 },
@@ -54,10 +35,31 @@ const SENTIMENT_BARS: SentimentBar[] = [
 
 type Filter = "All" | "POSITIVE" | "NEGATIVE" | "NEUTRAL";
 
+function timeAgo(iso: string) {
+  try {
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 3600)  return `${Math.round(diff / 60)} min ago`;
+    if (diff < 86400) return `${Math.round(diff / 3600)} hrs ago`;
+    return `${Math.round(diff / 86400)} days ago`;
+  } catch { return iso; }
+}
+
 export default function NewsPage() {
-  const [filter, setFilter] = useState<Filter>("All");
-  const [news] = useState<NewsItem[]>(PLACEHOLDER);
-  const [apiNote] = useState("Live news feed coming soon — connect NewsAPI key to activate.");
+  const [filter, setFilter]   = useState<Filter>("All");
+  const [news, setNews]       = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [noKey, setNoKey]     = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    getMarketNews(undefined, 20)
+      .then(({ articles }) => {
+        setNews(articles);
+        setNoKey(articles.length === 0);
+      })
+      .catch(() => setNoKey(true))
+      .finally(() => setLoading(false));
+  }, []);
 
   const filtered = filter === "All" ? news : news.filter(n => n.sentiment === filter);
 
@@ -73,9 +75,10 @@ export default function NewsPage() {
 
         <h1 className="text-lg font-semibold text-[#1a1a1a]">News & Sentiment</h1>
 
-        {apiNote && (
+        {noKey && (
           <div className="px-4 py-2.5 rounded-xl bg-[#fffbeb] border border-[#fde68a] text-[#92400e] text-xs">
-            {apiNote}
+            Add <code className="font-mono">NEWS_API_KEY</code> to <code className="font-mono">ai-trader-signals/.env</code> to enable live news.
+            Get a free key at <span className="font-semibold">newsapi.org</span>.
           </div>
         )}
 
@@ -100,22 +103,32 @@ export default function NewsPage() {
               ))}
             </div>
 
-            {filtered.map(item => (
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="bg-white border border-[#e8e8e8] rounded-xl p-4 animate-pulse h-24" />
+              ))
+            ) : filtered.length === 0 ? (
+              <div className="bg-white border border-[#e8e8e8] rounded-xl p-8 text-center text-[#9ca3af] text-sm">
+                No articles found. Add NEWS_API_KEY to see live news.
+              </div>
+            ) : filtered.map(item => (
               <a key={item.id} href={item.url} target="_blank" rel="noreferrer"
                 className="block bg-white border border-[#e8e8e8] rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)] hover:shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:border-[#d0d0d0] transition-all">
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <h3 className="text-sm font-semibold text-[#1a1a1a] leading-snug">{item.headline}</h3>
                   <SentimentBadge s={item.sentiment} />
                 </div>
-                <p className="text-xs text-[#6b7280] leading-relaxed mb-3">{item.summary}</p>
+                {item.description && (
+                  <p className="text-xs text-[#6b7280] leading-relaxed mb-3 line-clamp-2">{item.description}</p>
+                )}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-[#9ca3af]">{item.source}</span>
                     <span className="text-[#e0e0e0]">·</span>
-                    <span className="text-[10px] text-[#9ca3af]">{item.publishedAt}</span>
+                    <span className="text-[10px] text-[#9ca3af]">{timeAgo(item.publishedAt)}</span>
                   </div>
-                  <div className="flex gap-1">
-                    {item.symbols.map(sym => (
+                  <div className="flex gap-1 flex-wrap justify-end">
+                    {item.symbols.slice(0, 4).map(sym => (
                       <span key={sym} className="px-1.5 py-0.5 rounded bg-[#f5f5f5] text-[#6b7280] text-[9px] font-medium">{sym}</span>
                     ))}
                   </div>

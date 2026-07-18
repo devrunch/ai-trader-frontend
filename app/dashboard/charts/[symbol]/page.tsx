@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { placePaperOrder, getSignalsBySymbol, type ApiSignal } from "@/lib/api";
+import { placePaperOrder, getSignalsBySymbol, getHistorical, type ApiSignal, type ApiOhlcBar } from "@/lib/api";
 
 /* ─── Stock database ─── */
 const STOCKS: Record<string, {
@@ -26,28 +26,14 @@ const STOCKS: Record<string, {
   HDFCB:     { name: "HDFC Bank",            exchange: "NSE", price: 1734.20, change: 33.80,   pct: 1.99, up: true,  bsePrice: 1734.50, sector: "Banking",       marketCap: "₹13,25,670 Cr", pe: "18.4", pb: "2.4", high52: 1880.00, low52: 1363.55, about: "HDFC Bank is India's largest private sector bank offering personal banking, NRI banking, business banking and wholesale banking products and services." },
 };
 
-/* ─── Seeded deterministic data generator ─── */
-function sr(seed: number) {
-  const x = Math.sin(seed + 1) * 10000;
-  return x - Math.floor(x);
-}
-function genData(base: number, count: number, vol: number, trend: number, seed = 7): number[] {
-  const d = [base];
-  for (let i = 1; i < count; i++) {
-    const r = sr(seed * i + seed * 3.7);
-    d.push(Math.max(d[i - 1] + (r - 0.48) * vol + trend, base * 0.3));
-  }
-  return d;
-}
-
-const PERIODS: { label: string; count: number; vol: number; trend: number }[] = [
-  { label: "1D",  count: 75,  vol: 4,    trend: 0.12  },
-  { label: "1W",  count: 35,  vol: 8,    trend: 0.3   },
-  { label: "1M",  count: 22,  vol: 18,   trend: 0.8   },
-  { label: "3M",  count: 65,  vol: 22,   trend: 1.2   },
-  { label: "6M",  count: 130, vol: 28,   trend: 1.5   },
-  { label: "1Y",  count: 252, vol: 32,   trend: 1.8   },
-  { label: "3Y",  count: 150, vol: 55,   trend: 2.5   },
+const PERIODS: { label: string; interval: string; days: number }[] = [
+  { label: "1D",  interval: "5m",  days: 1   },
+  { label: "1W",  interval: "15m", days: 7   },
+  { label: "1M",  interval: "1h",  days: 30  },
+  { label: "3M",  interval: "1d",  days: 90  },
+  { label: "6M",  interval: "1d",  days: 180 },
+  { label: "1Y",  interval: "1d",  days: 365 },
+  { label: "3Y",  interval: "1d",  days: 1095 },
   { label: "5Y",  count: 250, vol: 70,   trend: 3.2   },
   { label: "All", count: 350, vol: 80,   trend: 3.8   },
 ];
@@ -158,6 +144,8 @@ export default function StockPage() {
   const stock   = STOCKS[symbol];
 
   const [period, setPeriod]       = useState("1D");
+  const [bars, setBars]           = useState<ApiOhlcBar[]>([]);
+  const [barsLoading, setBarsLoading] = useState(true);
   const [tab, setTab]             = useState<"BUY" | "SELL">("BUY");
   const [orderType, setOrderType] = useState<"Delivery" | "Intraday" | "MTF">("Delivery");
   const [qty, setQty]             = useState("");
@@ -172,6 +160,16 @@ export default function StockPage() {
   useEffect(() => {
     if (stock) setPrice(stock.price.toFixed(2));
   }, [symbol, stock]);
+
+  useEffect(() => {
+    if (!stock) return;
+    setBarsLoading(true);
+    const pCfg = PERIODS.find(p => p.label === period) ?? PERIODS[0];
+    getHistorical(symbol, stock.exchange, pCfg.interval, pCfg.days)
+      .then(({ bars: b }) => setBars(b))
+      .catch(() => setBars([]))
+      .finally(() => setBarsLoading(false));
+  }, [symbol, period, stock]);
 
   useEffect(() => {
     if (infoTab !== "AI Analysis") return;
@@ -191,12 +189,12 @@ export default function StockPage() {
     );
   }
 
-  const pCfg   = PERIODS.find((p) => p.label === period) ?? PERIODS[0];
-  const data   = genData(stock.price * 0.85, pCfg.count, pCfg.vol, pCfg.trend, symbol.length * 7);
-  // Ensure last point is close to current price
-  data[data.length - 1] = stock.price;
+  /* Use real close prices; fall back to flat line while loading */
+  const data = bars.length > 0
+    ? bars.map(b => b.close)
+    : [stock.price];
 
-  const color      = stock.up ? "#00b386" : "#e84040";
+  const color = stock.up ? "#00b386" : "#e84040";
   const orderTotal = qty && price ? (parseFloat(qty) * parseFloat(price)).toFixed(2) : "0.00";
   const isBuy      = tab === "BUY";
 
