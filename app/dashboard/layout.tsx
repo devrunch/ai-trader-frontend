@@ -2,139 +2,220 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
-import { getMarketStatus, type ApiMarketStatus } from "@/lib/api";
+import { useState, useEffect, useRef } from "react";
+import { MarketStatusProvider, useMarketStatus, nextOpenLabel } from "@/lib/market-status";
+import { useCurrentUser } from "@/lib/use-current-user";
 
-const IC = {
-  bell:     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
-  settings: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
-};
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const TABS = [
-  { href: "/dashboard",               label: "Overview"    },
-  { href: "/dashboard/signals",       label: "AI Signals"  },
-  { href: "/dashboard/paper-trade",   label: "Paper Trade" },
-  { href: "/dashboard/news",          label: "News"        },
-  { href: "/dashboard/charts",        label: "Charts"      },
+  { href: "/dashboard/brief",     label: "Brief"     },
+  { href: "/dashboard/terminal",  label: "Terminal"  },
+  // The track record was reachable only from an empty state and one Brief link.
+  // A product whose credibility rests on publishing its numbers should not hide them.
+  { href: "/dashboard/signals",   label: "Signals"   },
+  // Backtests used to exist only inside the chat message that produced them —
+  // scroll past it and the run was gone.
+  { href: "/dashboard/strategies", label: "Strategies" },
+  { href: "/dashboard/portfolio", label: "Portfolio" },
 ];
-
 
 function fmt(n: number | null | undefined) {
   if (n == null) return "—";
   return n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
+const PHASE_LABEL = {
+  OPEN:       { text: "OPEN",       colour: "var(--buy)" },
+  SQUARE_OFF: { text: "SQUARE-OFF", colour: "#e0ab4a" },
+  HOLIDAY:    { text: "HOLIDAY",    colour: "var(--muted-foreground)" },
+  CLOSED:     { text: "CLOSED",     colour: "var(--muted-foreground)" },
+} as const;
+
+/**
+ * Session state and the two index quotes.
+ *
+ * Deliberately not inside `hidden md:flex` any more: the OPEN/CLOSED chip was
+ * the only session indicator in the product and it vanished below 768px.
+ */
+function MarketPulse() {
+  const { status, phase, failed } = useMarketStatus();
+  const nifty  = status?.nifty50;
+  const sensex = status?.sensex;
+  const reopens = nextOpenLabel(status);
+
+  return (
+    <div className="flex items-center gap-3 sm:gap-4 font-mono text-xs min-w-0">
+      <div className="hidden md:flex items-center gap-4">
+        {[
+          { name: "NIFTY", ltp: nifty?.ltp, pct: nifty?.change_percent },
+          { name: "SENSEX", ltp: sensex?.ltp, pct: sensex?.change_percent },
+        ].map(idx => {
+          const up = (idx.pct ?? 0) >= 0;
+          return (
+            <div key={idx.name} className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">{idx.name}</span>
+              <span className="text-foreground">{idx.ltp != null ? fmt(idx.ltp) : "—"}</span>
+              {idx.pct != null && (
+                <span style={{ color: up ? "var(--buy)" : "var(--sell)" }}>
+                  {up ? "+" : "−"}{Math.abs(idx.pct).toFixed(2)}%
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Persistent session indicator — shown at every width. */}
+      {failed ? (
+        <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold"
+          style={{ background: "color-mix(in oklch, var(--sell) 12%, transparent)", color: "var(--sell)" }}
+          title="Couldn't reach the market status service">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--sell)" }} />
+          STATUS UNAVAILABLE
+        </span>
+      ) : phase ? (
+        <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold shrink-0"
+          style={{
+            background: phase === "OPEN" ? "color-mix(in oklch, var(--buy) 15%, transparent)" : "var(--secondary)",
+            color: PHASE_LABEL[phase].colour,
+          }}
+          title={phase !== "OPEN" && reopens ? `Reopens ${reopens}` : undefined}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: PHASE_LABEL[phase].colour }} />
+          {PHASE_LABEL[phase].text}
+          {phase !== "OPEN" && reopens && (
+            <span className="hidden lg:inline text-muted-foreground font-normal">· reopens {reopens}</span>
+          )}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** The signals service told us a data source failed. Say so rather than
+ *  presenting the last good value as current. */
+function DegradedBanner() {
+  const { status } = useMarketStatus();
+  if (!status?.degraded) return null;
+  return (
+    <div role="status" className="px-4 sm:px-8 py-1.5 text-[11px] border-b border-border shrink-0"
+      style={{ background: "color-mix(in oklch, #e0ab4a 10%, transparent)", color: "#e0ab4a" }}>
+      Some market data didn&apos;t arrive. Prices and index levels shown may be out of date.
+    </div>
+  );
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <MarketStatusProvider>
+      <DashboardChrome>{children}</DashboardChrome>
+    </MarketStatusProvider>
+  );
+}
+
+function DashboardChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [mkt, setMkt] = useState<ApiMarketStatus | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const { user } = useCurrentUser();
+  // Client-side only for whether to SHOW the link — RolesGuard on the API is
+  // what actually protects the page a click away.
+  const tabs = user?.role === "admin"
+    ? [...TABS, { href: "/dashboard/admin", label: "Admin" }]
+    : TABS;
 
   useEffect(() => {
-    getMarketStatus().then(setMkt).catch(() => {});
-    const id = setInterval(() => getMarketStatus().then(setMkt).catch(() => {}), 60_000);
-    return () => clearInterval(id);
+    function onClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
   }, []);
 
-  function isActive(href: string, label: string) {
-    if (label === "Overview") return pathname === "/dashboard";
-    return pathname.startsWith(href);
+  async function logout() {
+    try {
+      await fetch(`${API_URL}/api/auth/logout`, { method: "POST", credentials: "include" });
+    } catch { /* ignore */ }
+    window.location.href = "/login";
   }
 
   return (
-    <div className="h-screen bg-[#f8f9fa] flex flex-col overflow-hidden">
+    <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
 
       {/* ── Header ── */}
-      <header className="bg-white border-b border-[#e8e8e8] h-14 flex items-center px-6 sm:px-10 gap-5 shrink-0 z-30 sticky top-0">
-        <Link href="/dashboard" className="flex items-center gap-2 shrink-0">
-          <div className="w-8 h-8 rounded-xl bg-[#00b386] flex items-center justify-center text-white font-bold text-xs">
-            AI
-          </div>
-          <span className="font-bold text-[#1a1a1a] text-base tracking-tight hidden sm:block">
-            AI<span className="text-[#00b386]">Trader</span>
-          </span>
-          <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#eff6ff] text-[#3b82f6] hidden sm:block">
-            PAPER
+      <header className="bg-background border-b border-border h-14 flex items-center px-4 sm:px-8 gap-5 shrink-0 z-30">
+        <Link href="/dashboard/terminal" className="flex items-center gap-2 shrink-0">
+          <div className="w-8 h-8 bg-primary flex items-center justify-center text-primary-foreground font-bold text-xs">AI</div>
+          <span className="font-semibold text-base tracking-tight hidden sm:block">AI<span className="text-link">Trader</span></span>
+          <span
+            title="Paper trading only, no real money — this is an MVP for testing."
+            className="ml-1 px-1.5 py-0.5 text-[9px] font-bold bg-primary/15 text-link hidden sm:block"
+          >
+            PAPER · MVP
           </span>
         </Link>
 
-        <div className="flex-1" />
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button className="relative p-2 text-[#6b7280] hover:text-[#1a1a1a] transition-colors">
-            {IC.bell}
-          </button>
-
-          <Link href="/dashboard/profile" className="p-2 text-[#6b7280] hover:text-[#1a1a1a] transition-colors">
-            {IC.settings}
-          </Link>
-
-          <Link href="/dashboard/profile"
-            className="w-8 h-8 rounded-full bg-[#00b386] flex items-center justify-center text-white font-bold text-sm hover:ring-2 hover:ring-[#00b386]/40 hover:ring-offset-1 transition-all">
-            A
-          </Link>
-        </div>
-      </header>
-
-      {/* ── Nav tabs ── */}
-      <div className="bg-white border-b border-[#e8e8e8] shrink-0 sticky top-14 z-20">
-        <div className="flex items-center px-6 sm:px-10 overflow-x-auto no-scrollbar">
-          {TABS.map(({ href, label }) => {
-            const active = isActive(href, label);
+        {/* Nav tabs */}
+        <nav className="flex items-center gap-1 ml-2">
+          {tabs.map(({ href, label }) => {
+            const active = pathname.startsWith(href);
             return (
               <Link key={href} href={href}
-                className={`shrink-0 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
-                  active ? "text-[#00b386] border-[#00b386]" : "text-[#6b7280] border-transparent hover:text-[#1a1a1a] hover:border-[#d0d0d0]"
+                // Remember an explicit choice so the time-aware landing at
+                // /dashboard doesn't override where the user wanted to be.
+                onClick={() => sessionStorage.setItem("lastDashboardTab", href)}
+                className={`px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  active ? "text-foreground bg-secondary" : "text-muted-foreground hover:text-foreground"
                 }`}>
                 {label}
               </Link>
             );
           })}
-        </div>
-      </div>
+        </nav>
 
-      {/* ── Indices bar ── */}
-      <div className="bg-white border-b border-[#e8e8e8] shrink-0">
-        <div className="flex items-stretch min-w-max h-9">
-          {[
-            { name: "NIFTY 50", ltp: mkt?.nifty50?.ltp, pct: mkt?.nifty50?.change_percent },
-            { name: "SENSEX",   ltp: mkt?.sensex?.ltp,  pct: mkt?.sensex?.change_percent  },
-          ].map((idx, i) => {
-            const up = (idx.pct ?? 0) >= 0;
-            return (
-              <div key={idx.name}
-                className={`flex items-center gap-2 px-5 ${i > 0 ? "border-l border-[#f0f0f0]" : "pl-6 sm:pl-10"}`}>
-                <span className="text-[#6b7280] text-xs font-medium">{idx.name}</span>
-                <span className="text-[#1a1a1a] text-xs font-semibold font-mono">
-                  {idx.ltp != null ? `₹${fmt(idx.ltp)}` : "—"}
-                </span>
-                {idx.pct != null && (
-                  <span className={`text-xs font-semibold ${up ? "text-[#00b386]" : "text-[#e84040]"}`}>
-                    {up ? "+" : ""}{idx.pct.toFixed(2)}%
-                  </span>
-                )}
-              </div>
-            );
-          })}
-          {/* Market status pill */}
-          {mkt && (
-            <div className="flex items-center px-4 border-l border-[#f0f0f0]">
-              <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                mkt.nse_open ? "bg-[#e8f9f4] text-[#00b386]" : "bg-[#f5f5f5] text-[#9ca3af]"
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${mkt.nse_open ? "bg-[#00b386] animate-pulse" : "bg-[#9ca3af]"}`} />
-                {mkt.nse_open ? "Market Open" : "Market Closed"}
-              </span>
+        <div className="flex-1" />
+
+        <MarketPulse />
+
+        {/* Avatar menu */}
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen(v => !v)}
+            className="w-8 h-8 bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm hover:ring-2 hover:ring-primary/40 hover:ring-offset-1 hover:ring-offset-background transition-all"
+          >
+            A
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-2 w-44 bg-card border border-border shadow-lg z-40">
+              <Link href="/dashboard/profile" onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Profile
+              </Link>
+              <Link href="/dashboard/profile" onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Settings
+              </Link>
+              <div className="border-t border-border" />
+              <button onClick={logout}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors text-left">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Log out
+              </button>
             </div>
           )}
         </div>
-      </div>
+      </header>
+
+      <DegradedBanner />
 
       {/* ── Content ── */}
       <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full max-w-360 mx-auto px-6 sm:px-10 w-full overflow-hidden">
+        <div className="h-full max-w-[1600px] mx-auto px-4 sm:px-8 w-full overflow-hidden">
           {children}
         </div>
       </main>
-
     </div>
   );
 }

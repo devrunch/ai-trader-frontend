@@ -1,0 +1,645 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import {
+  getHistorical,
+  getQuote,
+  getSignalsBySymbol,
+  generateSignal,
+  getWatchlist,
+  addToWatchlist,
+  removeFromWatchlist,
+  getPaperPositions,
+  errorMessage,
+  type ApiOhlcBar,
+  type ApiSignal,
+  type ApiGeneratedSignal,
+  type ApiWatchlistItem,
+  type ApiPosition,
+  type ChatDrawing,
+} from "@/lib/api";
+import { PERIODS } from "@/lib/periods";
+import { useChartLayout } from "@/lib/use-chart-layout";
+import { useMarketStatus } from "@/lib/market-status";
+import { CandlestickChart, type Chart } from "@/components/CandlestickChart";
+import { OrderTicket, type OrderPrefill } from "@/components/OrderTicket";
+import { ChatPanel } from "@/components/chat/ChatPanel";
+import { ErrorState } from "@/components/ErrorState";
+import { DrawingToolbar, type DrawTool } from "@/components/terminal/DrawingToolbar";
+import { IndicatorMenu } from "@/components/terminal/IndicatorMenu";
+import { SignalPanel, type DisplaySignal } from "@/components/terminal/SignalPanel";
+import { PositionsPanel } from "@/components/terminal/PositionsPanel";
+import { Disclaimer } from "@/components/Disclaimer";
+
+const MAX_WATCHLIST_SIZE = 15;
+
+/** What a chart shows before anyone touches it, and what Reset returns it to. */
+const DEFAULT_INDICATORS = ["EMA", "VOL"];
+
+type Quote = { ltp: number; change: number; change_percent: number };
+
+function fromApiSignal(s: ApiSignal): DisplaySignal {
+  return {
+    direction: s.direction, confidence: s.confidence,
+    entryPrice: s.entryPrice, targetPrice: s.targetPrice, stopLoss: s.stopLoss,
+    reasoning: s.reasoning, indicators: s.indicators,
+    generatedAt: s.generatedAt ?? s.createdAt ?? null,
+  };
+}
+
+function fromGenerated(s: ApiGeneratedSignal): DisplaySignal {
+  return {
+    direction: s.signal_type, confidence: s.confidence,
+    entryPrice: s.entry_price, targetPrice: s.target_price, stopLoss: s.stop_loss,
+    reasoning: s.reasoning, indicators: s.indicators,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+
+export default function TerminalPage() {
+  // ?symbol=XYZ lets the Brief hand a candidate straight to the Terminal
+  const [activeSymbol, setActiveSymbol]     = useState(() => {
+    if (typeof window === "undefined") return "RELIANCE";
+    const s = new URLSearchParams(window.location.search).get("symbol");
+    return s ? s.toUpperCase() : "RELIANCE";
+  });
+  const [activeExchange, setActiveExchange] = useState("NSE");
+  const [period, setPeriod]                 = useState("1D");
+  const [bars, setBars]                     = useState<ApiOhlcBar[]>([]);
+  const [barsLoading, setBarsLoading]       = useState(true);
+  const [barsError, setBarsError]           = useState("");
+  /** Bumped by the chart's retry button. */
+  const [barsReload, setBarsReload]         = useState(0);
+  const [quote, setQuote]                   = useState<Quote | null>(null);
+  /** The quote fetch failed. Distinct from "not loaded yet" — a failure must
+   *  never render as ₹0.00 in green. */
+  const [quoteFailed, setQuoteFailed]       = useState(false);
+  const [suggestQuotes, setSuggestQuotes]   = useState<Record<string, Quote>>({});
+
+  const [watchlist, setWatchlist]           = useState<ApiWatchlistItem[]>([]);
+  const [watchlistLoading, setWatchlistLoading] = useState(true);
+  const [watchlistBusy, setWatchlistBusy]   = useState(false);
+  const [watchlistError, setWatchlistError] = useState("");
+
+  const [displaySignal, setDisplaySignal] = useState<DisplaySignal | null>(null);
+  const [signalLoading, setSignalLoading] = useState(true);
+  const [signalError, setSignalError]     = useState("");
+  const [positionsError, setPositionsError] = useState("");
+  const [positionsReload, setPositionsReload] = useState(0);
+
+  /* One shared market-status poll, from the dashboard layout. */
+  const { isLive: marketIsLive, phase: marketPhase } = useMarketStatus();
+  const [asking, setAsking]               = useState(false);
+  const [askedEmpty, setAskedEmpty]       = useState(false);
+  const [askError, setAskError]           = useState("");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen]   = useState(false);
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+
+  const [prefill, setPrefill] = useState<OrderPrefill | null>(null);
+
+  const chartRef = useRef<Chart | null>(null);
+  const [activeTool, setActiveTool] = useState("cursor");
+  /* Bumped when the chart instance is created. The saved layout is restored
+     against a real chart — restoring into a null ref draws nothing, silently. */
+  const [chartReady, setChartReady] = useState(0);
+
+  const [indicators, setIndicators] = useState<string[]>(DEFAULT_INDICATORS);
+
+  const [rightTab, setRightTab] = useState<"signal" | "trade" | "positions" | "chat">("signal");
+  const [positions, setPositions] = useState<ApiPosition[]>([]);
+  /* Derived below from (rightTab, positionsLoaded) — holding it in state meant
+     setting it synchronously inside an effect, which cascades a render. */
+  const [positionsLoaded, setPositionsLoaded] = useState(false);
+
+  const layout = useChartLayout({
+    symbol: activeSymbol,
+    exchange: activeExchange,
+    chartRef,
+    chartReady,
+    indicators,
+    onRestoreIndicators: setIndicators,
+  });
+
+  function pickTool(t: DrawTool) {
+    setActiveTool(t.key);
+    if (t.overlay && chartRef.current) {
+      chartRef.current.createOverlay({
+        name: t.overlay,
+        groupId: "draw",
+        // Saved once the user stops drawing, not on every pixel of the drag.
+        onDrawEnd: () => { layout.scheduleSave(); return false; },
+        onRemoved: () => { layout.scheduleSave(); return false; },
+      });
+    }
+  }
+  /** Only what the user drew themselves. The agent's marks are theirs to keep. */
+  function clearMyDrawings() {
+    chartRef.current?.removeOverlay({ groupId: "draw" });
+    setActiveTool("cursor");
+    layout.scheduleSave();
+  }
+
+  /**
+   * Back to a plain chart.
+   *
+   * Needed because chart state became durable: before it was saved, a reload
+   * was the reset. Now the agent's lines, the user's lines and whatever
+   * indicators got switched on all persist, and there was no way back to an
+   * empty chart at all.
+   */
+  function resetChart() {
+    const chart = chartRef.current;
+    chart?.removeOverlay({ groupId: "draw" });
+    // Every per-turn group, plus the legacy shared one from before turn ids.
+    for (const o of chart?.getOverlays() ?? []) {
+      if (String(o.groupId ?? "").startsWith("ai")) chart?.removeOverlay({ id: o.id });
+    }
+    setIndicators(DEFAULT_INDICATORS);
+    setActiveTool("cursor");
+    // Clearing has to reach the server too, or the next reload brings it back.
+    layout.clear();
+  }
+
+  /** Take back exactly what one answer added, leaving the rest alone. */
+  function removeTurnDrawings(turnId: string) {
+    chartRef.current?.removeOverlay({ groupId: `ai:${turnId}` });
+    layout.scheduleSave();
+  }
+
+  /**
+   * Put the agent's drawings on the chart.
+   *
+   * Grouped per TURN (`ai:<turnId>`), not under one shared "ai" group. The
+   * chart accumulates marks across a conversation, and without a per-answer
+   * group the only available undo is "delete everything the AI ever drew" —
+   * which is why the chat legend can now remove just its own.
+   */
+  function applyDrawings(drawings: ChatDrawing[], turnId?: string) {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const groupId = turnId ? `ai:${turnId}` : "ai";
+    for (const d of drawings) {
+      try {
+        if (d.kind === "segment" && d.points) {
+          chart.createOverlay({ name: "segment", points: d.points, groupId, lock: true,
+            styles: { line: { color: d.color || "#6c5ce7", size: 2 } } });
+        } else if (d.kind === "priceline" && d.value != null) {
+          chart.createOverlay({ name: "priceLine", points: [{ value: d.value }], groupId, lock: true,
+            styles: { line: { color: d.color || "#8b8a9e", style: "dashed" }, text: { color: "#0b0e14", backgroundColor: d.color || "#8b8a9e" } } });
+        } else if (d.kind === "fibonacci" && d.points) {
+          chart.createOverlay({ name: "fibonacciLine", points: d.points, groupId, lock: true });
+        } else if (d.kind === "trade_marker" && d.timestamp != null && d.value != null) {
+          // Where a backtested strategy actually entered and exited. The
+          // coordinates come from the backtest, computed off real bars — the
+          // model only chose the rules that produced them.
+          chart.createOverlay({
+            name: "simpleAnnotation",
+            points: [{ timestamp: d.timestamp, value: d.value }],
+            groupId,
+            lock: true,
+            extendData: d.side === "BUY" ? "▲" : "▼",
+            styles: { text: { color: d.color || "#8b8a9e", size: 12 } },
+          });
+        }
+      } catch { /* ignore unknown overlay */ }
+    }
+    // What the agent drew is part of the chart the user is looking at, so it is
+    // kept with everything else — an explanation that vanishes on reload
+    // explains nothing the next morning.
+    if (drawings.length) layout.scheduleSave();
+  }
+
+  /* The agent can toggle chart indicators as part of an answer. */
+  function applyChartIndicators(change: { add?: string[]; remove?: string[] }) {
+    setIndicators(list => {
+      const next = new Set(list);
+      (change.add ?? []).forEach(n => next.add(n));
+      (change.remove ?? []).forEach(n => next.delete(n));
+      return [...next];
+    });
+  }
+
+  function toggleIndicator(name: string) {
+    setIndicators(list => list.includes(name) ? list.filter(x => x !== name) : [...list, name]);
+  }
+
+  /* Watchlist — fetched on mount, drives the search suggestions.
+     Every setState sits in a promise callback: a synchronous one inside an
+     effect triggers a cascading render (react-hooks/set-state-in-effect). */
+  useEffect(() => {
+    getWatchlist()
+      .then(wl => { setWatchlist(wl); setWatchlistError(""); })
+      .catch(e => setWatchlistError(errorMessage(e, "Couldn't load your watchlist.")))
+      .finally(() => setWatchlistLoading(false));
+  }, []);
+
+  /* Suggestion quotes for whatever's currently on the watchlist */
+  useEffect(() => {
+    Promise.allSettled(watchlist.map(w => getQuote(w.symbol, w.exchange)))
+      .then(results => {
+        const map: Record<string, Quote> = {};
+        results.forEach((r, i) => { if (r.status === "fulfilled") map[watchlist[i].symbol] = r.value; });
+        setSuggestQuotes(map);
+      });
+  }, [watchlist]);
+
+  /* Live quote for the active symbol.
+     The 5s poll runs only while the session is live: outside market hours it
+     burns rate limit against a feed that cannot change, and the motion itself
+     implies a liveness the data does not have. */
+  useEffect(() => {
+    let alive = true;
+    const load = () => getQuote(activeSymbol, activeExchange)
+      .then(q => { if (alive) { setQuote(q); setQuoteFailed(false); } })
+      .catch(() => { if (alive) { setQuote(null); setQuoteFailed(true); } });
+    load();
+    if (!marketIsLive) return () => { alive = false; };
+    const id = setInterval(load, 5_000);
+    return () => { alive = false; clearInterval(id); };
+  }, [activeSymbol, activeExchange, marketIsLive]);
+
+  /* Historical bars */
+  useEffect(() => {
+    const pCfg = PERIODS.find(p => p.label === period) ?? PERIODS[0];
+    getHistorical(activeSymbol, activeExchange, pCfg.interval, pCfg.days)
+      .then(({ bars: b }) => { setBars(b); setBarsError(""); })
+      .catch(e => { setBars([]); setBarsError(errorMessage(e, "Couldn't load the chart.")); })
+      .finally(() => setBarsLoading(false));
+  }, [activeSymbol, activeExchange, period, barsReload]);
+
+  /* Existing stored signal (background, doesn't force a fresh LLM call) */
+  useEffect(() => {
+    getSignalsBySymbol(activeSymbol)
+      .then(sigs => {
+        setDisplaySignal(sigs[0] ? fromApiSignal(sigs[0]) : null);
+        setSignalError("");
+      })
+      .catch(e => { setDisplaySignal(null); setSignalError(errorMessage(e, "Couldn't check for an existing signal.")); })
+      .finally(() => setSignalLoading(false));
+  }, [activeSymbol]);
+
+  /* Close the symbol search on outside click. The indicator menu owns its own
+     — a dropdown's dismissal is a fact about the dropdown, not about the page. */
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) setSearchOpen(false);
+    }
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
+
+  /* Load running positions when that tab is open */
+  useEffect(() => {
+    if (rightTab !== "positions") return;
+    getPaperPositions()
+      .then(p => { setPositions(p); setPositionsError(""); })
+      // Swallowing this rendered an outage as "No open positions" — telling the
+      // user they hold nothing when we simply could not find out.
+      .catch(e => { setPositions([]); setPositionsError(errorMessage(e, "Couldn't load your positions.")); })
+      .finally(() => setPositionsLoaded(true));
+  }, [rightTab, positionsReload]);
+
+  // Only spins on the first visit; after that the previous positions stay on
+  // screen while the refetch runs, which is less jarring than a flash of skeleton.
+  const positionsLoading = rightTab === "positions" && !positionsLoaded;
+
+  async function handleAskAI() {
+    setAsking(true);
+    setAskError("");
+    setAskedEmpty(false);
+    try {
+      const res = await generateSignal(activeSymbol, activeExchange);
+      if (res.signal) {
+        setDisplaySignal(fromGenerated(res.signal));
+      } else {
+        setDisplaySignal(null);
+        setAskedEmpty(true);
+      }
+    } catch (err) {
+      setAskError(err instanceof Error ? err.message : "Analysis failed — try again");
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  function selectSymbol(sym: string, exchange = "NSE") {
+    setActiveSymbol(sym.toUpperCase());
+    setActiveExchange(exchange.toUpperCase());
+    setSearchQuery("");
+    setSearchOpen(false);
+  }
+
+  async function handleAddToWatchlist() {
+    setWatchlistBusy(true);
+    setWatchlistError("");
+    try {
+      const item = await addToWatchlist(activeSymbol, activeExchange);
+      setWatchlist(wl => [...wl, item]);
+    } catch (err) {
+      setWatchlistError(err instanceof Error ? err.message : "Couldn't add to watchlist");
+    } finally {
+      setWatchlistBusy(false);
+    }
+  }
+
+  async function handleRemoveFromWatchlist(symbol: string, exchange: string) {
+    try {
+      await removeFromWatchlist(symbol, exchange);
+      setWatchlist(wl => wl.filter(w => !(w.symbol === symbol && w.exchange === exchange)));
+    } catch {
+      // best-effort — leave it in the list if the delete failed
+    }
+  }
+
+  /* Null, never 0. A failed quote used to render as "₹0.00" in green, and that
+     0 was handed to the order ticket as the market price — the ticket's own
+     prop is documented "never render a fabricated 0", and this defeated it. */
+  const ltp       = quote?.ltp ?? null;
+  const change    = quote?.change ?? null;
+  const changePct = quote?.change_percent ?? null;
+  const isUp      = (change ?? 0) >= 0;
+
+  const q = searchQuery.trim().toUpperCase();
+  const matches = q
+    ? watchlist.filter(w => w.symbol.includes(q))
+    : watchlist;
+  const exactKnown = watchlist.some(w => w.symbol === q);
+  const activeInWatchlist = watchlist.some(w => w.symbol === activeSymbol && w.exchange === activeExchange);
+  const watchlistFull = watchlist.length >= MAX_WATCHLIST_SIZE;
+
+
+  return (
+    <>
+      {/* Below ~1024px the three-pane layout collapses and the chart column
+          computes to roughly zero width — the user got a broken screen with no
+          explanation. Saying so is a fine answer; a silently unusable chart is
+          not. The rest of the product (signals, brief, portfolio) is fully
+          usable on a phone, so send them there rather than to a dead end. */}
+      <div className="lg:hidden h-full flex items-center justify-center px-6 text-center">
+        <div className="max-w-xs">
+          <h1 className="font-heading text-lg font-semibold mb-2">The terminal needs a wider screen</h1>
+          <p className="text-muted-foreground text-sm mb-5">
+            Charting, drawing and the AI panel need at least a small laptop
+            (1024px). Everything else works here.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Link href="/dashboard/signals" className="px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground">
+              Go to Signals
+            </Link>
+            <Link href="/dashboard/brief" className="px-4 py-2 text-sm font-semibold border border-border text-muted-foreground hover:text-foreground transition-colors">
+              Read the Morning Brief
+            </Link>
+          </div>
+        </div>
+      </div>
+
+    <div className="hidden lg:flex h-full flex-col -mx-4 sm:-mx-8">
+
+      {/* ── Top toolbar ── */}
+      <div className="flex items-center gap-3 px-3 py-2 border-b border-border shrink-0">
+        {/* Search */}
+        <div className="relative w-60 shrink-0" ref={searchWrapRef}>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border focus-within:border-primary transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+              onFocus={() => setSearchOpen(true)}
+              placeholder="Search symbol…"
+              className="flex-1 min-w-0 text-sm text-foreground placeholder-muted-foreground focus:outline-none bg-transparent"
+            />
+          </div>
+          {searchOpen && (
+            <div className="absolute top-full left-0 w-72 mt-1.5 bg-card border border-border shadow-lg z-30 overflow-hidden">
+              <div className="px-3 pt-2.5 pb-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest font-mono">
+                Watchlist · {watchlist.length}/{MAX_WATCHLIST_SIZE}
+              </div>
+              {watchlistLoading ? (
+                <div className="px-3 py-3 text-xs text-muted-foreground text-center">Loading…</div>
+              ) : matches.length === 0 ? (
+                <div className="px-3 py-3 text-xs text-muted-foreground text-center">
+                  {watchlist.length === 0 ? "Watchlist empty — search & add a symbol." : "No matches"}
+                </div>
+              ) : matches.map(w => {
+                const sq = suggestQuotes[w.symbol];
+                return (
+                  <div key={`${w.symbol}-${w.exchange}`} className="w-full flex items-center justify-between px-3 py-2 hover:bg-secondary transition-colors group">
+                    <button onClick={() => selectSymbol(w.symbol, w.exchange)} className="flex-1 text-left">
+                      <span className="text-sm font-bold">{w.symbol}</span>
+                      <span className="text-[10px] text-muted-foreground ml-1.5 font-mono">{w.exchange}</span>
+                    </button>
+                    {sq && (
+                      <span className="text-right mr-2 font-mono">
+                        <span className="block text-xs font-semibold">₹{sq.ltp.toFixed(2)}</span>
+                        <span className="block text-[10px] font-semibold" style={{ color: sq.change_percent >= 0 ? "var(--buy)" : "var(--sell)" }}>
+                          {sq.change_percent >= 0 ? "+" : ""}{sq.change_percent.toFixed(2)}%
+                        </span>
+                      </span>
+                    )}
+                    <button onClick={() => handleRemoveFromWatchlist(w.symbol, w.exchange)}
+                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[var(--sell)] transition-opacity shrink-0 px-1" title="Remove">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                );
+              })}
+              {q && !exactKnown && (
+                <button onClick={() => selectSymbol(q)}
+                  className="w-full text-left px-3 py-2.5 text-xs font-semibold text-link hover:bg-primary/10 border-t border-border transition-colors">
+                  Load &ldquo;{q}&rdquo; anyway →
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Symbol + price inline */}
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="font-bold text-sm">{activeSymbol}</span>
+          <span className="text-[10px] text-muted-foreground font-mono">{activeExchange}</span>
+          {ltp === null ? (
+            <span className="font-mono text-sm text-muted-foreground ml-1" role="status">
+              {quoteFailed ? "price unavailable" : "loading…"}
+            </span>
+          ) : (
+            <>
+              <span className="font-mono text-lg font-bold ml-1">₹{ltp.toFixed(2)}</span>
+              {change !== null && changePct !== null && (
+                <span className="font-mono text-xs" style={{ color: isUp ? "var(--buy)" : "var(--sell)" }}>
+                  {isUp ? "+" : "−"}{Math.abs(change).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
+                </span>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="flex-1" />
+
+        <IndicatorMenu active={indicators} onToggle={toggleIndicator} />
+
+        <div className="w-px h-5 bg-border mx-1 hidden lg:block" />
+
+        {/* Period selector */}
+        <div className="hidden lg:flex items-center gap-0.5">
+          {PERIODS.map((p) => (
+            <button key={p.label} onClick={() => setPeriod(p.label)}
+              className={`px-2 py-1 text-[11px] font-mono font-semibold transition-colors ${
+                period === p.label ? "bg-primary/15 text-link" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+              }`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="w-px h-5 bg-border mx-1 hidden lg:block" />
+
+        {!watchlistLoading && (
+          activeInWatchlist ? (
+            <button onClick={() => handleRemoveFromWatchlist(activeSymbol, activeExchange)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 border border-primary/40 bg-primary/10 text-link text-xs font-semibold hover:bg-primary/20 transition-colors">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <span className="hidden sm:inline">Watching</span>
+            </button>
+          ) : (
+            <button onClick={handleAddToWatchlist} disabled={watchlistBusy || watchlistFull}
+              title={watchlistFull ? `Watchlist limited to ${MAX_WATCHLIST_SIZE}` : undefined}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border text-muted-foreground text-xs font-semibold hover:border-primary/50 hover:text-link transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span className="hidden sm:inline">Watchlist</span>
+            </button>
+          )
+        )}
+
+        <button onClick={handleAskAI} disabled={asking}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-sm font-bold hover:brightness-110 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
+          {asking ? (
+            <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Analyzing…</>
+          ) : (
+            <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg> Ask AI</>
+          )}
+        </button>
+      </div>
+
+      {watchlistError && (
+        <div className="px-3 py-1 text-[11px] border-b border-border shrink-0" style={{ color: "var(--sell)" }}>{watchlistError}</div>
+      )}
+
+      {/* ── Body: tool rail + chart + right panel ── */}
+      <div className="flex-1 flex min-h-0">
+
+        <DrawingToolbar
+          activeTool={activeTool}
+          onPick={pickTool}
+          onClear={clearMyDrawings}
+          onReset={resetChart}
+          saveConflict={layout.conflict}
+        />
+
+        {/* Chart */}
+        <div className="flex-1 min-w-0 relative bg-card">
+          {barsLoading ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+            </div>
+          ) : barsError ? (
+            /* An outage must not render as "no data for this symbol" — that
+               tells the user their symbol is wrong when the server is down. */
+            <div className="absolute inset-0 flex items-center justify-center p-6">
+              <ErrorState message={barsError} onRetry={() => setBarsReload(n => n + 1)} />
+            </div>
+          ) : bars.length === 0 ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" className="mb-2 opacity-50"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              <p className="text-sm text-muted-foreground">No chart data for {activeSymbol}</p>
+              <p className="text-xs text-muted-foreground mt-1">Try another symbol, or check the exchange.</p>
+            </div>
+          ) : (
+            <CandlestickChart fill bars={bars} signal={displaySignal} indicators={indicators} livePrice={quote?.ltp}
+              onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }} />
+          )}
+        </div>
+
+        {/* Right panel — tabbed */}
+        <div className="w-[340px] shrink-0 border-l border-border flex flex-col">
+          <div className="flex border-b border-border shrink-0">
+            {([["signal", "Signal"], ["trade", "Trade"], ["positions", "Positions"], ["chat", "Chat"]] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setRightTab(k as typeof rightTab)}
+                className={`flex-1 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors ${rightTab === k ? "text-link border-primary" : "text-muted-foreground border-transparent hover:text-foreground"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto no-scrollbar p-3">
+
+            {/* ── Signal ── */}
+            {rightTab === "signal" && (
+              <SignalPanel
+                symbol={activeSymbol}
+                signal={displaySignal}
+                asking={asking}
+                askError={askError}
+                loadError={signalError}
+                loading={signalLoading}
+                askedEmpty={askedEmpty}
+                onUseSignal={(side, price) => { setPrefill({ side, price }); setRightTab("trade"); }}
+              />
+            )}
+
+            {/* ── Trade ── */}
+            {rightTab === "trade" && (
+              <OrderTicket symbol={activeSymbol} exchange={activeExchange} name={activeSymbol}
+                ltp={ltp} changePct={changePct} prefill={prefill} />
+            )}
+
+            {/* ── Positions ── */}
+            {rightTab === "positions" && (
+              <PositionsPanel
+                positions={positions}
+                loading={positionsLoading}
+                error={positionsError}
+                onRetry={() => setPositionsReload(n => n + 1)}
+                onSelect={selectSymbol}
+              />
+            )}
+
+            {/* ── Chat (agent) ── */}
+            {rightTab === "chat" && (
+              <ChatPanel
+                /* Keyed by symbol: a new symbol is a new conversation, and
+                   remounting resets the messages, the progress feed and any
+                   in-flight turn together. */
+                key={activeSymbol}
+                symbol={activeSymbol}
+                exchange={activeExchange}
+                onDrawings={applyDrawings}
+                onRemoveDrawings={removeTurnDrawings}
+                onIndicators={applyChartIndicators}
+                onUseTrade={({ side, price, turnId }) => {
+                  // The turn id travels with the prefill, so the order records
+                  // which analysis it came out of.
+                  setPrefill({ side, price, decisionTurnId: turnId });
+                  setRightTab("trade");
+                }}
+              />
+            )}
+
+            {/* The qualification belongs on the surface where trades are
+                actually placed. It was imported here and never rendered, so the
+                one page that can move the paper account carried nothing —
+                while the Signals page, which cannot, carried it. */}
+            {rightTab !== "chat" && (
+              <Disclaimer variant="short" className="mt-4 pt-3 border-t border-border" />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+    </>
+  );
+}

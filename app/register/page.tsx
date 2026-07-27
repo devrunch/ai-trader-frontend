@@ -5,19 +5,22 @@ import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export default function LoginPage() {
-  const [email, setEmail]       = useState("");
+export default function RegisterPage() {
+  const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError]       = useState("");
-  const [loading, setLoading]   = useState(false);
-  const [success, setSuccess]   = useState(false);
+  const [confirm,  setConfirm]  = useState("");
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [success,  setSuccess]  = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (password !== confirm) { setError("Passwords do not match"); return; }
+    if (password.length < 8)  { setError("Password must be at least 8 characters"); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/login`, {
+      const res = await fetch(`${API_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -25,14 +28,12 @@ export default function LoginPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data?.message ?? "Invalid credentials");
+        throw new Error(data?.message ?? "Registration failed");
       }
       setSuccess(true);
-      // Hard navigation guarantees the fresh auth cookie is sent and middleware
-      // re-evaluates from scratch rather than replaying a cached transition.
-      setTimeout(() => { window.location.href = "/dashboard/terminal"; }, 500);
+      setTimeout(() => { window.location.href = "/dashboard/terminal"; }, 700);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Registration failed");
       setLoading(false);
     }
   }
@@ -43,7 +44,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-4 relative overflow-hidden">
-      <div className="absolute -top-24 -left-24 w-96 h-96 bg-primary/10 rounded-full blur-3xl float-animation pointer-events-none" />
+      <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-primary/10 rounded-full blur-3xl float-animation pointer-events-none" />
 
       <div className="w-full max-w-sm relative">
         <div className="text-center mb-8">
@@ -51,8 +52,8 @@ export default function LoginPage() {
             <div className="w-9 h-9 bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">AI</div>
             <span className="text-2xl font-semibold tracking-tight">AI<span className="text-link">Trader</span></span>
           </Link>
-          <h1 className="font-heading text-2xl font-semibold mt-6 mb-1 tracking-tight">Welcome back</h1>
-          <p className="text-muted-foreground text-sm">Sign in to your paper-trading workspace</p>
+          <h1 className="font-heading text-2xl font-semibold mt-6 mb-1 tracking-tight">Create your account</h1>
+          <p className="text-muted-foreground text-sm">Start paper trading in under a minute — no card required</p>
         </div>
 
         <div className="bg-card border border-border p-8">
@@ -85,20 +86,23 @@ export default function LoginPage() {
             <div>
               <label className="block text-xs font-medium mb-1.5">Email address</label>
               <input
-                type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                type="email" required value={email} onChange={e => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 className="w-full px-3.5 py-2.5 bg-secondary border border-border text-sm placeholder-muted-foreground focus:border-primary focus:outline-none transition-colors"
               />
             </div>
             <div>
-              {/* No "Forgot password?" link. Password reset is not implemented,
-                  and a dead link on an auth screen is worse than its absence —
-                  a user who has actually forgotten their password clicks it,
-                  nothing happens, and they conclude the product is abandoned.
-                  Restore it when the flow exists. */}
               <label className="block text-xs font-medium mb-1.5">Password</label>
               <input
-                type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="Min 8 characters"
+                className="w-full px-3.5 py-2.5 bg-secondary border border-border text-sm placeholder-muted-foreground focus:border-primary focus:outline-none transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1.5">Confirm password</label>
+              <input
+                type="password" required value={confirm} onChange={e => setConfirm(e.target.value)}
                 placeholder="••••••••"
                 className="w-full px-3.5 py-2.5 bg-secondary border border-border text-sm placeholder-muted-foreground focus:border-primary focus:outline-none transition-colors"
               />
@@ -108,18 +112,18 @@ export default function LoginPage() {
               type="submit" disabled={loading}
               className="w-full py-2.5 bg-primary text-primary-foreground font-semibold text-sm hover:brightness-110 transition-all mt-1 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? "Creating account…" : "Create account"}
             </button>
           </form>
 
           <p className="text-center text-muted-foreground text-xs mt-5">
-            Don&apos;t have an account?{" "}
-            <Link href="/register" className="text-link font-medium hover:underline">Sign up free</Link>
+            Already have an account?{" "}
+            <Link href="/login" className="text-link font-medium hover:underline">Sign in</Link>
           </p>
         </div>
 
         <p className="text-center text-muted-foreground text-xs mt-5">
-          By signing in you agree to our <a href="#" className="hover:text-foreground">Terms</a> and <a href="#" className="hover:text-foreground">Privacy Policy</a>.
+          By signing up you agree to our <a href="#" className="hover:text-foreground">Terms</a> and <a href="#" className="hover:text-foreground">Privacy Policy</a>.
         </p>
       </div>
 
@@ -129,7 +133,7 @@ export default function LoginPage() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--buy)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
           <div>
-            <div className="font-bold text-sm">Welcome back</div>
+            <div className="font-bold text-sm">Account created</div>
             <div className="text-muted-foreground text-xs mt-0.5">Taking you to your terminal…</div>
           </div>
         </div>

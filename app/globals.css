@@ -1,27 +1,106 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-fraunces);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-buy: var(--buy);
+  --color-sell: var(--sell);
+  --color-link: var(--link);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.4);
+  --radius-3xl: calc(var(--radius) * 1.4);
+  --radius-4xl: calc(var(--radius) * 1.4);
 }
 
+/*
+  One deliberate dark identity — an intraday trading terminal, not a toggleable
+  light/dark product (yet). Ink-navy ground, indigo-violet brand accent kept
+  separate from buy/sell semantics (green/red are reserved for market direction
+  only, never reused as decoration elsewhere).
+*/
 :root {
-  --background: #f8f9fa;
-  --foreground: #1a1a1a;
-  --primary: #00b386;
-  --primary-light: #e8f9f4;
-  --border: #e8e8e8;
-  --card: #ffffff;
-  --muted: #6b7280;
-  --positive: #00b386;
-  --negative: #e84040;
+  --background: #0b0e14;
+  --foreground: #e8e6f0;
+  --card: #12151c;
+  --card-foreground: #e8e6f0;
+  --popover: #12151c;
+  --popover-foreground: #e8e6f0;
+
+  --primary: #6c5ce7;
+  --primary-foreground: #ffffff;
+
+  /*
+    Text-only variant of the brand accent. --primary computes to 3.99:1 against
+    --background and 3.76:1 against --card, so it fails WCAG AA (4.5:1) for the
+    11–14px links and labels it was being used for. This lighter value clears
+    AA as text; --primary stays exactly as it was for fills, where it passes.
+  */
+  --link: #8b7cf0;
+
+  --secondary: #1a1e28;
+  --secondary-foreground: #e8e6f0;
+  --muted: #1a1e28;
+  --muted-foreground: #8b8a9e;
+  --accent: #1a1e28;
+  --accent-foreground: #e8e6f0;
+
+  --destructive: #f0525d;
+  --border: #232733;
+  --input: #232733;
+  --ring: #6c5ce7;
+
+  /* Market semantics — never used as brand/UI decoration, only for direction */
+  --buy: #16c784;
+  --sell: #f0525d;
+
+  /* Sharp, structured, blueprint-adjacent — no rounded corners */
+  --radius: 0rem;
+
+  --sidebar: #0e1118;
+  --sidebar-foreground: #e8e6f0;
+  --sidebar-primary: #6c5ce7;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1a1e28;
+  --sidebar-accent-foreground: #e8e6f0;
+  --sidebar-border: #232733;
+  --sidebar-ring: #6c5ce7;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -53,3 +132,38 @@ body {
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/*
+  Every number in this product sits in a column someone scans — prices, P&L,
+  win rates. Proportional digits make that scan impossible because a "1" is
+  narrower than a "0", so figures drift out of vertical alignment row to row.
+  The mono stack is already fixed-width, but this also covers the places where
+  a figure is rendered in the UI font, and it costs nothing.
+*/
+.font-mono,
+[class*="tabular"],
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+  A visible focus ring everywhere, not just where a component happened to define
+  one. The app was operable by keyboard in places but gave no indication of
+  where focus actually was.
+*/
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}

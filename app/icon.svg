@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="AI Trader">
+  <!--
+    The product mark, not a framework default. Matches the header badge: the
+    primary square with "AI", plus a rising line so the icon reads as a trading
+    tool at 16px where the letters do not.
+
+    Square, not rounded: the whole UI is square-cornered, and a rounded icon in
+    a square-cornered product looks borrowed.
+  -->
+  <rect width="32" height="32" fill="#6c5ce7"/>
+  <path d="M4 23 L11 16 L15 19 L28 7"
+        fill="none" stroke="#0b0e14" stroke-width="2.5"
+        stroke-linecap="square" stroke-linejoin="miter" opacity="0.55"/>
+  <text x="16" y="22" text-anchor="middle"
+        font-family="ui-monospace, Menlo, Consolas, monospace"
+        font-size="15" font-weight="700" fill="#0b0e14">AI</text>
+</svg>
