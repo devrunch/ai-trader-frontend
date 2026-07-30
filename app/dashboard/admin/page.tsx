@@ -66,24 +66,26 @@ export default function AdminUsagePage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
-      <header>
-        <h1 className="text-lg font-bold">Token usage</h1>
-        <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
-          What every user has spent on AI analysis today, and the cap that controls
-          it. Resets at midnight IST. Admin only.
-        </p>
-      </header>
+    <div className="h-full overflow-y-auto no-scrollbar">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+        <header>
+          <h1 className="text-lg font-bold">Token usage</h1>
+          <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+            What every user has spent on AI analysis today, and the cap that controls
+            it. Resets at midnight IST. Admin only.
+          </p>
+        </header>
 
-      {loading && <SkeletonList />}
-      {!loading && error && <ErrorState message={error} onRetry={retry} />}
+        {loading && <SkeletonList />}
+        {!loading && error && <ErrorState message={error} onRetry={retry} />}
 
-      {!loading && !error && data && (
-        <>
-          <Totals summary={data} />
-          <UserTable users={data.users} onCapChanged={patchUser} />
-        </>
-      )}
+        {!loading && !error && data && (
+          <>
+            <Totals summary={data} />
+            <UserTable users={data.users} onCapChanged={patchUser} />
+          </>
+        )}
+      </div>
     </div>
   );
 }
