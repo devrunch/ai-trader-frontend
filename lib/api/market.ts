@@ -87,3 +87,14 @@ export const getHistorical = (symbol: string, exchange = "NSE", interval = "15m"
   req<{ bars: ApiOhlcBar[] }>(
     `/api/market/historical/${symbol}?exchange=${exchange}&interval=${interval}&days=${days}`
   );
+
+export interface SymbolMatch {
+  symbol: string;
+  name: string;
+  exchange: string;
+}
+
+/** Company name or symbol -> real matches, each already on an exchange this
+ *  app can chart — no manual exchange guessing needed for a result you click. */
+export const searchSymbols = (query: string) =>
+  req<{ results: SymbolMatch[] }>(`/api/market/search?q=${encodeURIComponent(query)}`);
