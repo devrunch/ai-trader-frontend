@@ -54,6 +54,15 @@ export interface SignalPanelProps {
    * "not asked yet": the first is an answer, the second is an empty screen.
    */
   askedEmpty: boolean;
+  /**
+   * On-demand generation runs its own India-specific cost/risk model — it is
+   * NSE/BSE only, by design, same restriction as paper trading. A stored
+   * signal from before this exchange was viewable still shows normally; this
+   * only changes what the EMPTY state says, so the boundary reads as a
+   * decision rather than a raw backend rejection the user had to trigger to
+   * discover.
+   */
+  onDemandAvailable: boolean;
   onUseSignal: (side: "BUY" | "SELL", price: number) => void;
 }
 
@@ -67,7 +76,8 @@ export interface SignalPanelProps {
  * page, and collapsing any two of them shows a user the wrong thing.
  */
 export function SignalPanel({
-  symbol, currency, signal, asking, askError, loadError, loading, askedEmpty, onUseSignal,
+  symbol, currency, signal, asking, askError, loadError, loading, askedEmpty,
+  onDemandAvailable, onUseSignal,
 }: SignalPanelProps) {
   const [showIndicators, setShowIndicators] = useState(false);
   const age = signalAge(signal?.generatedAt ?? null);
@@ -122,9 +132,11 @@ export function SignalPanel({
             <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
           </svg>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            {askedEmpty
-              ? `No signal for ${symbol} right now — confidence or reward:risk didn't clear the bar.`
-              : <>No analysis yet for {symbol}.<br />Press &ldquo;Ask AI&rdquo; above for a live read.</>}
+            {!onDemandAvailable
+              ? <>On-demand analysis is available for NSE and BSE only right now.<br />You can still chart {symbol} and ask the AI about it in Chat.</>
+              : askedEmpty
+                ? `No signal for ${symbol} right now — confidence or reward:risk didn't clear the bar.`
+                : <>No analysis yet for {symbol}.<br />Press &ldquo;Ask AI&rdquo; above for a live read.</>}
           </p>
         </div>
       ) : (

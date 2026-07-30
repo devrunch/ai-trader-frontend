@@ -52,6 +52,18 @@ const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE"] as const;
  */
 const TRADABLE_EXCHANGES = new Set(["NSE", "BSE"]);
 
+/**
+ * Exchanges on-demand signal generation covers.
+ *
+ * Same two exchanges as TRADABLE_EXCHANGES today, but a separate constant on
+ * purpose — this one mirrors the API's own SIGNAL_EXCHANGES (signals.controller.ts),
+ * a different restriction for a different reason (its cost/risk model is
+ * India-specific, not a currency-mismatch issue). If trading and signal
+ * coverage ever diverge, sharing one set here would silently gate the wrong
+ * feature.
+ */
+const SIGNAL_EXCHANGES = new Set(["NSE", "BSE"]);
+
 const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$" };
 
 type Quote = { ltp: number; change: number; change_percent: number };
@@ -358,6 +370,9 @@ export default function TerminalPage() {
   const positionsLoading = rightTab === "positions" && !positionsLoaded;
 
   async function handleAskAI() {
+    // The button is disabled for these exchanges too — this guards a
+    // fast-second-click or any other path that reaches the handler directly.
+    if (!SIGNAL_EXCHANGES.has(activeExchange)) return;
     setAsking(true);
     setAskError("");
     setAskedEmpty(false);
@@ -609,7 +624,8 @@ export default function TerminalPage() {
           )
         )}
 
-        <button onClick={handleAskAI} disabled={asking}
+        <button onClick={handleAskAI} disabled={asking || !SIGNAL_EXCHANGES.has(activeExchange)}
+          title={SIGNAL_EXCHANGES.has(activeExchange) ? undefined : "On-demand analysis is available for NSE and BSE only right now"}
           className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-sm font-bold hover:brightness-110 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
           {asking ? (
             <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Analyzing…</>
@@ -682,6 +698,7 @@ export default function TerminalPage() {
                 loadError={signalError}
                 loading={signalLoading}
                 askedEmpty={askedEmpty}
+                onDemandAvailable={SIGNAL_EXCHANGES.has(activeExchange)}
                 onUseSignal={(side, price) => { setPrefill({ side, price }); setRightTab("trade"); }}
               />
             )}
