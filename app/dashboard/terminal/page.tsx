@@ -433,23 +433,33 @@ export default function TerminalPage() {
           </div>
           {searchOpen && (
             <div className="absolute top-full left-0 w-72 mt-1.5 bg-card border border-border shadow-lg z-30 overflow-hidden">
-              {/* Only matters for "Load anyway" below — a watchlist row already
-                  carries its own exchange, this can't change what it opens. */}
+              {/* Typing something not already tracked: this IS the search —
+                  it was previously a small text link below a "No matches"
+                  watchlist block, which read as the search being broken. Now
+                  it's the first, obvious thing, exchange picker attached. */}
               {q && !exactKnown && (
-                <div className="flex gap-1 px-3 pt-2.5 pb-2 border-b border-border">
-                  {SEARCH_EXCHANGES.map((ex) => (
-                    <button
-                      key={ex}
-                      onClick={() => setSearchExchange(ex)}
-                      className={`px-2 py-0.5 text-[10px] font-mono font-semibold border transition-colors ${
-                        searchExchange === ex
-                          ? "border-primary text-link bg-primary/10"
-                          : "border-border text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {ex}
-                    </button>
-                  ))}
+                <div className="border-b border-border">
+                  <button onClick={() => selectSymbol(q, searchExchange)}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-primary/10 transition-colors">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    <span className="text-sm font-bold">{q}</span>
+                    <span className="text-[10px] text-muted-foreground font-mono">on {searchExchange}</span>
+                  </button>
+                  <div className="flex gap-1 px-3 pb-2.5">
+                    {SEARCH_EXCHANGES.map((ex) => (
+                      <button
+                        key={ex}
+                        onClick={() => setSearchExchange(ex)}
+                        className={`px-2 py-0.5 text-[10px] font-mono font-semibold border transition-colors ${
+                          searchExchange === ex
+                            ? "border-primary text-link bg-primary/10"
+                            : "border-border text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {ex}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               <div className="px-3 pt-2.5 pb-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest font-mono">
@@ -459,7 +469,7 @@ export default function TerminalPage() {
                 <div className="px-3 py-3 text-xs text-muted-foreground text-center">Loading…</div>
               ) : matches.length === 0 ? (
                 <div className="px-3 py-3 text-xs text-muted-foreground text-center">
-                  {watchlist.length === 0 ? "Watchlist empty — search & add a symbol." : "No matches"}
+                  {watchlist.length === 0 ? "Empty — search above finds any symbol." : "No matches in your watchlist"}
                 </div>
               ) : matches.map(w => {
                 const sq = suggestQuotes[w.symbol];
@@ -471,7 +481,7 @@ export default function TerminalPage() {
                     </button>
                     {sq && (
                       <span className="text-right mr-2 font-mono">
-                        <span className="block text-xs font-semibold">₹{sq.ltp.toFixed(2)}</span>
+                        <span className="block text-xs font-semibold">{CURRENCY[w.exchange] ?? "₹"}{sq.ltp.toFixed(2)}</span>
                         <span className="block text-[10px] font-semibold" style={{ color: sq.change_percent >= 0 ? "var(--buy)" : "var(--sell)" }}>
                           {sq.change_percent >= 0 ? "+" : ""}{sq.change_percent.toFixed(2)}%
                         </span>
@@ -484,12 +494,6 @@ export default function TerminalPage() {
                   </div>
                 );
               })}
-              {q && !exactKnown && (
-                <button onClick={() => selectSymbol(q, searchExchange)}
-                  className="w-full text-left px-3 py-2.5 text-xs font-semibold text-link hover:bg-primary/10 border-t border-border transition-colors">
-                  Load &ldquo;{q}&rdquo; on {searchExchange} →
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -617,6 +621,7 @@ export default function TerminalPage() {
             {rightTab === "signal" && (
               <SignalPanel
                 symbol={activeSymbol}
+                currency={CURRENCY[activeExchange] ?? "₹"}
                 signal={displaySignal}
                 asking={asking}
                 askError={askError}

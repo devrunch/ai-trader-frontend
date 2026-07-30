@@ -31,6 +31,9 @@ export function signalAge(iso: string | null): { label: string; stale: boolean }
 
 export interface SignalPanelProps {
   symbol: string;
+  /** "₹" or "$" — signal generation is NSE/BSE-only server-side, but the panel
+   *  stays generic rather than assuming rupees, same as everywhere else. */
+  currency: string;
   signal: DisplaySignal | null;
   /** A live analysis is running. */
   asking: boolean;
@@ -64,7 +67,7 @@ export interface SignalPanelProps {
  * page, and collapsing any two of them shows a user the wrong thing.
  */
 export function SignalPanel({
-  symbol, signal, asking, askError, loadError, loading, askedEmpty, onUseSignal,
+  symbol, currency, signal, asking, askError, loadError, loading, askedEmpty, onUseSignal,
 }: SignalPanelProps) {
   const [showIndicators, setShowIndicators] = useState(false);
   const age = signalAge(signal?.generatedAt ?? null);
@@ -154,9 +157,9 @@ export function SignalPanel({
 
           <div className="grid grid-cols-3 gap-2 text-xs">
             {[
-              { l: "Entry",  v: `₹${signal.entryPrice}`,  c: "var(--foreground)" },
-              { l: "Target", v: `₹${signal.targetPrice}`, c: "var(--buy)" },
-              { l: "Stop",   v: `₹${signal.stopLoss}`,    c: "var(--sell)" },
+              { l: "Entry",  v: `${currency}${signal.entryPrice}`,  c: "var(--foreground)" },
+              { l: "Target", v: `${currency}${signal.targetPrice}`, c: "var(--buy)" },
+              { l: "Stop",   v: `${currency}${signal.stopLoss}`,    c: "var(--sell)" },
             ].map((x) => (
               <div key={x.l} className="bg-secondary border border-border p-2 text-center">
                 <div className="text-muted-foreground text-[9.5px] mb-0.5 uppercase tracking-wide">{x.l}</div>
