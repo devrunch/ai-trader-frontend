@@ -254,6 +254,13 @@ export default function TerminalPage() {
             styles: { line: { color: d.color || "#8b8a9e", style: "dashed" }, text: { color: "#0b0e14", backgroundColor: d.color || "#8b8a9e" } } });
         } else if (d.kind === "fibonacci" && d.points) {
           chart.createOverlay({ name: "fibonacciLine", points: d.points, groupId, lock: true });
+        } else if (d.kind === "series" && d.points) {
+          // "brush" is klinecharts' only built-in overlay that draws a single
+          // continuous line through an arbitrary number of points — `segment`
+          // and friends hard-require exactly 2. This is how any agent-picked
+          // series (SMA, a 5-bar high channel, ...) becomes one chart line.
+          chart.createOverlay({ name: "brush", points: d.points, groupId, lock: true,
+            styles: { line: { color: d.color || "#e0ab4a", size: 2 } } });
         } else if (d.kind === "trade_marker" && d.timestamp != null && d.value != null) {
           // Where a backtested strategy actually entered and exited. The
           // coordinates come from the backtest, computed off real bars — the

@@ -2,7 +2,7 @@ import { req } from "./client";
 
 /* ── AI chat agent ── */
 export interface ChatDrawing {
-  kind: "segment" | "priceline" | "fibonacci" | "trade_marker";
+  kind: "segment" | "priceline" | "fibonacci" | "trade_marker" | "series";
   points?: { timestamp: number; value: number }[];
   value?: number;
   timestamp?: number;

@@ -22,6 +22,7 @@ const KIND_LABEL: Record<string, string> = {
   segment: "Trend line",
   fibonacci: "Fibonacci",
   trade_marker: "Trade",
+  series: "Indicator line",
 };
 
 const money = (n: number) =>
