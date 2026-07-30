@@ -89,7 +89,11 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
-  /** Indicator name -> pane id returned by createIndicator, so it can be removed. */
+  /** Indicator name -> id returned by createIndicator, so it can be removed.
+   *  NOT a pane id — createIndicator returns the indicator's own instance id,
+   *  and removeIndicator has to be filtered on that same id. Filtering by
+   *  paneId instead (as this used to) silently matches nothing, because the
+   *  value stored here was never a real pane id to begin with. */
   const appliedRef = useRef<Map<string, string>>(new Map());
   /* Chart init is async (klinecharts is dynamically imported to keep it out of
      SSR), so the indicator effect below would run against a null ref on first
@@ -265,22 +269,22 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
     // previous one would make us skip creating them.
 
 
-    for (const [name, paneId] of [...applied]) {
+    for (const [name, id] of [...applied]) {
       if (wanted.has(name)) continue;
-      chart.removeIndicator({ paneId, name });
+      chart.removeIndicator({ id });
       applied.delete(name);
     }
 
     for (const name of wanted) {
       if (applied.has(name)) continue;
-      const paneId = MAIN_PANE_INDICATORS.has(name)
+      const id = MAIN_PANE_INDICATORS.has(name)
         ? chart.createIndicator(
             name === "EMA"
               ? { name, calcParams: [20, 50], paneId: "candle_pane" }
               : { name, paneId: "candle_pane" },
           )
         : chart.createIndicator(name);
-      if (paneId) applied.set(name, paneId);
+      if (id) applied.set(name, id);
     }
     // `chartReady` (not `bars`) is the second dependency: it ticks whenever the
     // init effect has produced a NEW chart instance, which is exactly when the

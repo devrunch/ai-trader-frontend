@@ -122,7 +122,6 @@ export function DrawingToolbar({
           : "Reset chart — remove all drawings and restore the default indicators"}
         aria-label="Reset chart"
         onClick={() => {
-          console.log("[reset-debug] click reached handler, confirming =", confirming);
           if (confirming) { onReset(); setConfirming(false); return; }
           setConfirming(true);
         }}
