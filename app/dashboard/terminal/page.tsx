@@ -37,6 +37,21 @@ const MAX_WATCHLIST_SIZE = 15;
 /** What a chart shows before anyone touches it, and what Reset returns it to. */
 const DEFAULT_INDICATORS = ["EMA", "VOL"];
 
+/** Exchanges the search box can jump to directly. */
+const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE"] as const;
+
+/**
+ * Exchanges the paper account can actually trade on.
+ *
+ * The account is denominated in rupees — an order in a dollar-priced symbol
+ * would debit rupees for a dollar fill with no conversion. Matches the API's
+ * own `TradableExchange` allowlist; kept here too so the Trade tab can explain
+ * itself instead of the user finding out from a 400.
+ */
+const TRADABLE_EXCHANGES = new Set(["NSE", "BSE"]);
+
+const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$" };
+
 type Quote = { ltp: number; change: number; change_percent: number };
 
 function fromApiSignal(s: ApiSignal): DisplaySignal {
@@ -97,6 +112,8 @@ export default function TerminalPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen]   = useState(false);
+  /** Which exchange "Load anyway" jumps to — watchlist rows carry their own. */
+  const [searchExchange, setSearchExchange] = useState<string>("NSE");
   const searchWrapRef = useRef<HTMLDivElement>(null);
 
   const [prefill, setPrefill] = useState<OrderPrefill | null>(null);
@@ -416,6 +433,25 @@ export default function TerminalPage() {
           </div>
           {searchOpen && (
             <div className="absolute top-full left-0 w-72 mt-1.5 bg-card border border-border shadow-lg z-30 overflow-hidden">
+              {/* Only matters for "Load anyway" below — a watchlist row already
+                  carries its own exchange, this can't change what it opens. */}
+              {q && !exactKnown && (
+                <div className="flex gap-1 px-3 pt-2.5 pb-2 border-b border-border">
+                  {SEARCH_EXCHANGES.map((ex) => (
+                    <button
+                      key={ex}
+                      onClick={() => setSearchExchange(ex)}
+                      className={`px-2 py-0.5 text-[10px] font-mono font-semibold border transition-colors ${
+                        searchExchange === ex
+                          ? "border-primary text-link bg-primary/10"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="px-3 pt-2.5 pb-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest font-mono">
                 Watchlist · {watchlist.length}/{MAX_WATCHLIST_SIZE}
               </div>
@@ -449,9 +485,9 @@ export default function TerminalPage() {
                 );
               })}
               {q && !exactKnown && (
-                <button onClick={() => selectSymbol(q)}
+                <button onClick={() => selectSymbol(q, searchExchange)}
                   className="w-full text-left px-3 py-2.5 text-xs font-semibold text-link hover:bg-primary/10 border-t border-border transition-colors">
-                  Load &ldquo;{q}&rdquo; anyway →
+                  Load &ldquo;{q}&rdquo; on {searchExchange} →
                 </button>
               )}
             </div>
@@ -468,7 +504,7 @@ export default function TerminalPage() {
             </span>
           ) : (
             <>
-              <span className="font-mono text-lg font-bold ml-1">₹{ltp.toFixed(2)}</span>
+              <span className="font-mono text-lg font-bold ml-1">{CURRENCY[activeExchange] ?? "₹"}{ltp.toFixed(2)}</span>
               {change !== null && changePct !== null && (
                 <span className="font-mono text-xs" style={{ color: isUp ? "var(--buy)" : "var(--sell)" }}>
                   {isUp ? "+" : "−"}{Math.abs(change).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
@@ -593,8 +629,22 @@ export default function TerminalPage() {
 
             {/* ── Trade ── */}
             {rightTab === "trade" && (
-              <OrderTicket symbol={activeSymbol} exchange={activeExchange} name={activeSymbol}
-                ltp={ltp} changePct={changePct} prefill={prefill} />
+              TRADABLE_EXCHANGES.has(activeExchange) ? (
+                <OrderTicket symbol={activeSymbol} exchange={activeExchange} name={activeSymbol}
+                  ltp={ltp} changePct={changePct} prefill={prefill} />
+              ) : (
+                // The account is rupee-denominated — an order here would debit
+                // rupees for a dollar fill with no conversion. Said plainly
+                // instead of letting the user hit the API's 400 blind.
+                <div className="bg-card border border-border p-4 text-center">
+                  <p className="text-sm font-semibold mb-1">Paper trading isn&apos;t available for {activeExchange} yet</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    The paper account is in rupees, and {activeSymbol} prices in{" "}
+                    {CURRENCY[activeExchange] ?? "a different currency"}. NSE and BSE only, for now —
+                    you can still chart {activeSymbol} and ask the AI about it.
+                  </p>
+                </div>
+              )
             )}
 
             {/* ── Positions ── */}
