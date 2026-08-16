@@ -329,7 +329,7 @@ function LiveChartDemo() {
           )}
         </button>
       </div>
-      <CandlestickChart bars={bars} signal={signal} />
+      <CandlestickChart bars={bars} signal={signal} interval="15m" />
       {signal && (
         <p className="text-xs text-muted-foreground leading-relaxed mt-3 pt-3 border-t border-border">
           This is the exact chart engine from the real product — entry, target, and stop-loss drawn live, the same way they appear when you ask about a real stock.

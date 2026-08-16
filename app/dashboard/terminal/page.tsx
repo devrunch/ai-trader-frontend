@@ -36,6 +36,12 @@ import { Disclaimer } from "@/components/Disclaimer";
 
 const MAX_WATCHLIST_SIZE = 15;
 
+/** How many days to fetch when zoom swaps to a different candle interval —
+ *  enough to give the new view room to pan without re-fetching years of
+ *  5-minute data just because the user zoomed in briefly. The chart
+ *  re-centers the view itself once the new bars land. */
+const ZOOM_INTERVAL_DAYS: Record<string, number> = { "1m": 1, "5m": 5, "15m": 14, "1h": 60, "1d": 730 };
+
 /** What a chart shows before anyone touches it, and what Reset returns it to. */
 const DEFAULT_INDICATORS = ["EMA", "VOL"];
 
@@ -96,6 +102,7 @@ export default function TerminalPage() {
   });
   const [activeExchange, setActiveExchange] = useState("NSE");
   const [period, setPeriod]                 = useState("1D");
+  const pCfg = PERIODS.find(p => p.label === period) ?? PERIODS[0];
   const [bars, setBars]                     = useState<ApiOhlcBar[]>([]);
   const [barsLoading, setBarsLoading]       = useState(true);
   const [barsError, setBarsError]           = useState("");
@@ -360,6 +367,14 @@ export default function TerminalPage() {
       .then(({ bars: b }) => b.filter(bar => bar.time * 1000 < oldestTimestampMs))
       .catch(() => []);
   }, [activeSymbol, activeExchange, period]);
+
+  const handleIntervalChange = useCallback((newInterval: string): Promise<ApiOhlcBar[]> => {
+    const days = ZOOM_INTERVAL_DAYS[newInterval] ?? 30;
+    loadedDaysRef.current = days;
+    return getHistorical(activeSymbol, activeExchange, newInterval, days)
+      .then(({ bars: b }) => b)
+      .catch(() => []);
+  }, [activeSymbol, activeExchange]);
 
   /* Existing stored signal (background, doesn't force a fresh LLM call) */
   useEffect(() => {
@@ -698,8 +713,10 @@ export default function TerminalPage() {
             </div>
           ) : (
             <CandlestickChart fill bars={bars} signal={displaySignal} indicators={indicators} livePrice={quote?.ltp}
+              interval={pCfg.interval}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
-              onLoadMore={handleLoadMore} />
+              onLoadMore={handleLoadMore}
+              onIntervalChange={handleIntervalChange} />
           )}
         </div>
 

@@ -78,18 +78,48 @@ export type ChartSignal = {
 /** Indicators that draw over the candles (vs. their own sub-pane below). */
 const MAIN_PANE_INDICATORS = new Set(["EMA", "MA", "SMA", "BOLL", "SAR", "BBI"]);
 
-export function CandlestickChart({ bars, signal, height = 320, fill = false, indicators = ["EMA", "VOL"], livePrice, onReady, onLoadMore }: {
+/**
+ * Zoom auto-picks candle size from how much time is visible on screen —
+ * ordered coarsest to finest, first threshold the visible span still clears
+ * wins. Roughly mirrors the day-spans `PERIODS` already pairs with each of
+ * these intervals as a sensible starting point, not an arbitrary table.
+ */
+const ZOOM_INTERVAL_TIERS: { interval: string; minVisibleDays: number }[] = [
+  { interval: "1d",  minVisibleDays: 180 },
+  { interval: "1h",  minVisibleDays: 14 },
+  { interval: "15m", minVisibleDays: 2 },
+  { interval: "5m",  minVisibleDays: 0.25 },
+  { interval: "1m",  minVisibleDays: 0 },
+];
+
+function intervalForVisibleSpan(visibleDays: number): string {
+  for (const tier of ZOOM_INTERVAL_TIERS) {
+    if (visibleDays >= tier.minVisibleDays) return tier.interval;
+  }
+  return "1m";
+}
+
+export function CandlestickChart({ bars, signal, height = 320, fill = false, indicators = ["EMA", "VOL"], livePrice, interval, onReady, onLoadMore, onIntervalChange }: {
   bars: ApiOhlcBar[];
   signal: ChartSignal | null;
   height?: number;
   fill?: boolean;
   indicators?: string[];
   livePrice?: number;
+  /** The interval `bars` was fetched at (e.g. "5m", "1d") — the starting
+   *  point zoom-driven interval switching (below) tracks and diverges from. */
+  interval: string;
   onReady?: (chart: Chart) => void;
   /** Older bars than the oldest currently on the chart, for when the user
    *  scrolls/pans back past what's loaded. Returning fewer bars than asked
    *  for (including none) is read as "nothing further back exists". */
   onLoadMore?: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
+  /** Called when the visible zoom span crosses into a different interval's
+   *  territory (see ZOOM_INTERVAL_TIERS) — e.g. zooming in on an hourly view
+   *  far enough that 15-minute candles fit the screen better. Returns bars
+   *  at the new interval, roughly centered on `centerTimestampMs`; an empty
+   *  return is read as "couldn't get that interval, stay put". */
+  onIntervalChange?: (interval: string, centerTimestampMs: number) => Promise<ApiOhlcBar[]>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -113,6 +143,8 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   const onLoadMoreRef = useRef(onLoadMore);
   useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
+  const onIntervalChangeRef = useRef(onIntervalChange);
+  useEffect(() => { onIntervalChangeRef.current = onIntervalChange; }, [onIntervalChange]);
 
   // Live-tick plumbing: KLineChart pushes a callback via the DataLoader's
   // subscribeBar; we invoke it with an updated last candle when livePrice moves.
@@ -212,41 +244,45 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
     chart.setSymbol({ ticker: "SYM", pricePrecision: 2, volumePrecision: 0 });
     chart.setPeriod({ span: pSpan, type: pType });
 
-    // Panning replaces zoom as the way to see more history: scroll/drag
-    // stays on (klinecharts' default), but the wheel no longer changes
-    // candle width — that's the interaction being removed here.
-    chart.setZoomEnabled(false);
-
-    // Grows as the user pans back past what's currently loaded — `getBars`
-    // below reads/writes this closure variable, not the `bars` prop, so
-    // panning-in-more data doesn't require a re-render to keep working.
+    // Grows as the user pans back past what's currently loaded, and gets
+    // replaced wholesale when zoom swaps to a different candle interval
+    // (see subscribeAction below) — both read/write this one closure
+    // variable, not the `bars` prop, so neither needs a re-render to work.
     let allBars = klineData;
+    let activeInterval = interval;
+
+    function toKLineData(raw: ApiOhlcBar[]) {
+      return raw.map(b => ({
+        timestamp: b.time > 2e9 ? b.time : b.time * 1000,
+        open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+      }));
+    }
+
+    function getBars({ type, callback }: { type: string; callback: (data: typeof allBars, more?: boolean | { forward?: boolean; backward?: boolean }) => void }) {
+      if (type === "init") {
+        // `forward: true` is what makes klinecharts call back into this
+        // loader with type "forward" once the user pans to the oldest
+        // loaded bar — without it, panning past the loaded range just
+        // shows empty space. "backward" (future/live data) isn't used;
+        // live ticks arrive through subscribeBar below instead.
+        callback(allBars, { forward: true, backward: false });
+        return;
+      }
+      if (type !== "forward" || !onLoadMoreRef.current || allBars.length === 0) {
+        callback([], false);
+        return;
+      }
+      onLoadMoreRef.current(allBars[0].timestamp)
+        .then((older) => {
+          const mapped = toKLineData(older);
+          if (mapped.length) allBars = [...mapped, ...allBars];
+          callback(mapped, mapped.length > 0);
+        })
+        .catch(() => callback([], false));
+    }
+
     chart.setDataLoader({
-      getBars: ({ type, callback }) => {
-        if (type === "init") {
-          // `forward: true` is what makes klinecharts call back into this
-          // loader with type "forward" once the user pans to the oldest
-          // loaded bar — without it, panning past the loaded range just
-          // shows empty space. "backward" (future/live data) isn't used;
-          // live ticks arrive through subscribeBar below instead.
-          callback(allBars, { forward: true, backward: false });
-          return;
-        }
-        if (type !== "forward" || !onLoadMoreRef.current || allBars.length === 0) {
-          callback([], false);
-          return;
-        }
-        onLoadMoreRef.current(allBars[0].timestamp)
-          .then((older) => {
-            const mapped = older.map(b => ({
-              timestamp: b.time > 2e9 ? b.time : b.time * 1000,
-              open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
-            }));
-            if (mapped.length) allBars = [...mapped, ...allBars];
-            callback(mapped, mapped.length > 0);
-          })
-          .catch(() => callback([], false));
-      },
+      getBars,
       subscribeBar: ({ callback }) => { barCallbackRef.current = callback; },
       unsubscribeBar: () => { barCallbackRef.current = null; },
     });
@@ -255,6 +291,46 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
     // left the viewport at — without this the chart can show mostly empty
     // space on load.
     chart.scrollToRealTime();
+
+    // Zoom auto-picks candle size: as the visible time span crosses one of
+    // ZOOM_INTERVAL_TIERS' thresholds, swap in bars fetched at the interval
+    // that actually fits (can't derive 5m candles from 1d ones already on
+    // screen — this always means a real fetch). Debounced so a fast wheel
+    // scroll doesn't fire a request per tick; only the settled zoom level
+    // triggers one.
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    function onVisibleRangeChange() {
+      if (!onIntervalChangeRef.current) return;
+      const range = chart.getVisibleRange();
+      const first = allBars[range.from];
+      const last = allBars[Math.min(range.to, allBars.length - 1)];
+      if (!first || !last) return;
+
+      const visibleDays = (last.timestamp - first.timestamp) / 86_400_000;
+      const target = intervalForVisibleSpan(visibleDays);
+      if (target === activeInterval) return;
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const centerTimestampMs = (first.timestamp + last.timestamp) / 2;
+        onIntervalChangeRef.current?.(target, centerTimestampMs)
+          .then((newBars) => {
+            if (!newBars.length) return;
+            activeInterval = target;
+            allBars = toKLineData(newBars);
+            chart.setDataLoader({
+              getBars,
+              subscribeBar: ({ callback }) => { barCallbackRef.current = callback; },
+              unsubscribeBar: () => { barCallbackRef.current = null; },
+            });
+            chart.scrollToTimestamp(centerTimestampMs);
+          })
+          // A failed swap just means the view stays at the interval it was
+          // already showing — not a broken chart, so nothing to surface.
+          .catch(() => undefined);
+      }, 400);
+    }
+    chart.subscribeAction("onVisibleRangeChange", onVisibleRangeChange);
 
       // Indicators are applied by their own effect below, so toggling one
       // does not rebuild the chart.
@@ -284,6 +360,8 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
 
       cleanup = () => {
         ro.disconnect();
+        if (debounceTimer) clearTimeout(debounceTimer);
+        chart.unsubscribeAction("onVisibleRangeChange", onVisibleRangeChange);
         chartRef.current = null;
         appliedRef.current.clear();
         dispose(el);
@@ -292,7 +370,10 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
 
     return () => { cancelled = true; if (cleanup) cleanup(); };
   // `indicators` is deliberately NOT a dependency — see the effect below.
-  }, [bars, signal, height, fill]);
+  // `interval` is included even though it changes alongside `bars` in every
+  // current caller: if that ever stops being true, the chart should still
+  // fully rebuild rather than track a stale baseline in its closure.
+  }, [bars, signal, height, fill, interval]);
 
   /**
    * Apply indicator changes INCREMENTALLY to the existing chart.
