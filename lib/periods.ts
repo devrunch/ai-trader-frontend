@@ -5,7 +5,11 @@ export interface ChartPeriod {
 }
 
 export const PERIODS: ChartPeriod[] = [
-  { label: "1D",  interval: "5m",  days: 1    },
+  // 5, not 1: a weekend or a short holiday means "1 day back" can land on a
+  // window with no session at all, and the chart has nothing to show. This
+  // still reads as "1D" — it just reliably reaches the most recent real
+  // session instead of sometimes finding a gap.
+  { label: "1D",  interval: "5m",  days: 5    },
   { label: "1W",  interval: "15m", days: 7    },
   { label: "1M",  interval: "1h",  days: 30   },
   { label: "3M",  interval: "1d",  days: 90   },
