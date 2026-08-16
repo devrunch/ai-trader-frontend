@@ -78,7 +78,7 @@ export type ChartSignal = {
 /** Indicators that draw over the candles (vs. their own sub-pane below). */
 const MAIN_PANE_INDICATORS = new Set(["EMA", "MA", "SMA", "BOLL", "SAR", "BBI"]);
 
-export function CandlestickChart({ bars, signal, height = 320, fill = false, indicators = ["EMA", "VOL"], livePrice, onReady }: {
+export function CandlestickChart({ bars, signal, height = 320, fill = false, indicators = ["EMA", "VOL"], livePrice, onReady, onLoadMore }: {
   bars: ApiOhlcBar[];
   signal: ChartSignal | null;
   height?: number;
@@ -86,6 +86,10 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
   indicators?: string[];
   livePrice?: number;
   onReady?: (chart: Chart) => void;
+  /** Older bars than the oldest currently on the chart, for when the user
+   *  scrolls/pans back past what's loaded. Returning fewer bars than asked
+   *  for (including none) is read as "nothing further back exists". */
+  onLoadMore?: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -107,6 +111,8 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
   // rendering, where a render can be thrown away.
   const onReadyRef = useRef(onReady);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+  const onLoadMoreRef = useRef(onLoadMore);
+  useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
 
   // Live-tick plumbing: KLineChart pushes a callback via the DataLoader's
   // subscribeBar; we invoke it with an updated last candle when livePrice moves.
@@ -205,11 +211,50 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
 
     chart.setSymbol({ ticker: "SYM", pricePrecision: 2, volumePrecision: 0 });
     chart.setPeriod({ span: pSpan, type: pType });
+
+    // Panning replaces zoom as the way to see more history: scroll/drag
+    // stays on (klinecharts' default), but the wheel no longer changes
+    // candle width — that's the interaction being removed here.
+    chart.setZoomEnabled(false);
+
+    // Grows as the user pans back past what's currently loaded — `getBars`
+    // below reads/writes this closure variable, not the `bars` prop, so
+    // panning-in-more data doesn't require a re-render to keep working.
+    let allBars = klineData;
     chart.setDataLoader({
-      getBars: ({ callback }) => callback(klineData, false),
+      getBars: ({ type, callback }) => {
+        if (type === "init") {
+          // `forward: true` is what makes klinecharts call back into this
+          // loader with type "forward" once the user pans to the oldest
+          // loaded bar — without it, panning past the loaded range just
+          // shows empty space. "backward" (future/live data) isn't used;
+          // live ticks arrive through subscribeBar below instead.
+          callback(allBars, { forward: true, backward: false });
+          return;
+        }
+        if (type !== "forward" || !onLoadMoreRef.current || allBars.length === 0) {
+          callback([], false);
+          return;
+        }
+        onLoadMoreRef.current(allBars[0].timestamp)
+          .then((older) => {
+            const mapped = older.map(b => ({
+              timestamp: b.time > 2e9 ? b.time : b.time * 1000,
+              open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+            }));
+            if (mapped.length) allBars = [...mapped, ...allBars];
+            callback(mapped, mapped.length > 0);
+          })
+          .catch(() => callback([], false));
+      },
       subscribeBar: ({ callback }) => { barCallbackRef.current = callback; },
       unsubscribeBar: () => { barCallbackRef.current = null; },
     });
+    // Snaps the view to the latest bar at the right edge (with the chart's
+    // own configured padding) instead of whatever position a prior render
+    // left the viewport at — without this the chart can show mostly empty
+    // space on load.
+    chart.scrollToRealTime();
 
       // Indicators are applied by their own effect below, so toggling one
       // does not rebuild the chart.

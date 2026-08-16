@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import {
   getHistorical,
@@ -332,13 +332,34 @@ export default function TerminalPage() {
   }, [activeSymbol, activeExchange, marketIsLive]);
 
   /* Historical bars */
+  // How far back the chart has actually fetched — starts at the selected
+  // period's own window and grows as the user pans further back than that
+  // (see handleLoadMore). Reset whenever the base fetch below re-runs, so a
+  // symbol/period/exchange change doesn't inherit a previous pan's widening.
+  const loadedDaysRef = useRef(PERIODS[0].days);
   useEffect(() => {
     const pCfg = PERIODS.find(p => p.label === period) ?? PERIODS[0];
+    loadedDaysRef.current = pCfg.days;
     getHistorical(activeSymbol, activeExchange, pCfg.interval, pCfg.days)
       .then(({ bars: b }) => { setBars(b); setBarsError(""); })
       .catch(e => { setBars([]); setBarsError(errorMessage(e, "Couldn't load the chart.")); })
       .finally(() => setBarsLoading(false));
   }, [activeSymbol, activeExchange, period, barsReload]);
+
+  /* Bars older than what's currently loaded, for panning back past the
+     chart's own edge. Re-fetches the same interval over a wider window
+     (doubled each time, capped at "All"'s span) rather than true cursor
+     pagination — the historical endpoint only takes a day-count from now,
+     not a "before this timestamp" cursor. */
+  const handleLoadMore = useCallback((oldestTimestampMs: number): Promise<ApiOhlcBar[]> => {
+    const pCfg = PERIODS.find(p => p.label === period) ?? PERIODS[0];
+    const nextDays = Math.min(loadedDaysRef.current * 2, 3650);
+    if (nextDays <= loadedDaysRef.current) return Promise.resolve([]);
+    loadedDaysRef.current = nextDays;
+    return getHistorical(activeSymbol, activeExchange, pCfg.interval, nextDays)
+      .then(({ bars: b }) => b.filter(bar => bar.time * 1000 < oldestTimestampMs))
+      .catch(() => []);
+  }, [activeSymbol, activeExchange, period]);
 
   /* Existing stored signal (background, doesn't force a fresh LLM call) */
   useEffect(() => {
@@ -562,7 +583,7 @@ export default function TerminalPage() {
                           </span>
                         )}
                         <button onClick={() => handleRemoveFromWatchlist(w.symbol, w.exchange)}
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[var(--sell)] transition-opacity shrink-0 px-1" title="Remove">
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-sell transition-opacity shrink-0 px-1" title="Remove">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </button>
                       </div>
@@ -677,12 +698,13 @@ export default function TerminalPage() {
             </div>
           ) : (
             <CandlestickChart fill bars={bars} signal={displaySignal} indicators={indicators} livePrice={quote?.ltp}
-              onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }} />
+              onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
+              onLoadMore={handleLoadMore} />
           )}
         </div>
 
         {/* Right panel — tabbed */}
-        <div className="w-[340px] shrink-0 border-l border-border flex flex-col">
+        <div className="w-85 shrink-0 border-l border-border flex flex-col">
           <div className="flex border-b border-border shrink-0">
             {([["signal", "Signal"], ["trade", "Trade"], ["positions", "Positions"], ["chat", "Chat"]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setRightTab(k as typeof rightTab)}
