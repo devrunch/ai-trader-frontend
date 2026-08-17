@@ -69,6 +69,14 @@ export interface ApiOhlcBar {
   volume: number;
 }
 
+export interface Quote {
+  symbol: string;
+  exchange: string;
+  ltp: number;
+  change: number;
+  change_percent: number;
+}
+
 export const getMarketStatus = () =>
   req<ApiMarketStatus>("/api/market/status");
 
@@ -79,7 +87,7 @@ export const getMarketNews = (symbols?: string, limit = 15) => {
 };
 
 export const getQuote = (symbol: string, exchange = "NSE") =>
-  req<{ ltp: number; change: number; change_percent: number; symbol: string }>(
+  req<Omit<Quote, "exchange">>(
     `/api/market/quote/${symbol}?exchange=${exchange}`
   );
 
