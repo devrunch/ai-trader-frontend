@@ -13,6 +13,7 @@ import {
   getPaperPositions,
   searchSymbols,
   errorMessage,
+  PRICE_DELAY_NOTE,
   type ApiOhlcBar,
   type ApiSignal,
   type ApiGeneratedSignal,
@@ -66,6 +67,13 @@ const TRADABLE_EXCHANGES = new Set(["NSE", "BSE"]);
  */
 const SIGNAL_EXCHANGES = new Set(["NSE", "BSE"]);
 
+/**
+ * Exchanges fed by the real-time Kite WebSocket. Everything else (NASDAQ,
+ * NYSE, …) rides the yfinance poll instead, and that price is genuinely
+ * stale — the delay disclosure only belongs on those.
+ */
+const REALTIME_EXCHANGES = new Set(["NSE", "BSE"]);
+
 const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$" };
 
 function fromApiSignal(s: ApiSignal): DisplaySignal {
@@ -101,7 +109,7 @@ export default function TerminalPage() {
   const [barsError, setBarsError]           = useState("");
   /** Bumped by the chart's retry button. */
   const [barsReload, setBarsReload]         = useState(0);
-  const quote = useLiveQuote(activeSymbol, activeExchange);
+  const { quote, connected } = useLiveQuote(activeSymbol, activeExchange);
   const [suggestQuotes, setSuggestQuotes]   = useState<Record<string, Quote>>({});
 
   const [watchlist, setWatchlist]           = useState<ApiWatchlistItem[]>([]);
@@ -427,8 +435,8 @@ export default function TerminalPage() {
     try {
       await removeFromWatchlist(symbol, exchange);
       setWatchlist(wl => wl.filter(w => !(w.symbol === symbol && w.exchange === exchange)));
-    } catch {
-      // best-effort — leave it in the list if the delete failed
+    } catch (err) {
+      setWatchlistError(err instanceof Error ? err.message : "Couldn't remove from watchlist");
     }
   }
 
@@ -585,7 +593,7 @@ export default function TerminalPage() {
           <span className="text-[10px] text-muted-foreground font-mono">{activeExchange}</span>
           {ltp === null ? (
             <span className="font-mono text-sm text-muted-foreground ml-1" role="status">
-              loading…
+              {connected ? "loading…" : "reconnecting…"}
             </span>
           ) : (
             <>
@@ -596,6 +604,9 @@ export default function TerminalPage() {
                 </span>
               )}
             </>
+          )}
+          {!REALTIME_EXCHANGES.has(activeExchange) && (
+            <span className="text-[10px] text-muted-foreground font-mono">{PRICE_DELAY_NOTE}</span>
           )}
         </div>
 
@@ -716,9 +727,12 @@ export default function TerminalPage() {
               />
             )}
 
-            {/* ── Trade ── */}
-            {rightTab === "trade" && (
-              TRADABLE_EXCHANGES.has(activeExchange) ? (
+            {/* ── Trade ──
+                Always mounted, visibility toggled by class: a conditional
+                render here unmounts OrderTicket on every tab switch away and
+                back, discarding whatever quantity/price the user had typed. */}
+            <div className={rightTab === "trade" ? "" : "hidden"}>
+              {TRADABLE_EXCHANGES.has(activeExchange) ? (
                 <OrderTicket symbol={activeSymbol} exchange={activeExchange} name={activeSymbol}
                   ltp={ltp} changePct={changePct} prefill={prefill} />
               ) : (
@@ -733,8 +747,8 @@ export default function TerminalPage() {
                     you can still chart {activeSymbol} and ask the AI about it.
                   </p>
                 </div>
-              )
-            )}
+              )}
+            </div>
 
             {/* ── Positions ── */}
             {rightTab === "positions" && (

@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE_URL } from "@/lib/api/client";
 
 interface Me { id: string; email: string; plan: string; role: string }
 
@@ -54,7 +53,7 @@ export default function ProfilePage() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/auth/me`, { credentials: "include" })
+    fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setMe(data); })
       .catch(() => {});
@@ -62,7 +61,7 @@ export default function ProfilePage() {
 
   async function handleLogout() {
     setLoggingOut(true);
-    await fetch(`${API_URL}/api/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
+    await fetch(`${API_BASE_URL}/api/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
     window.location.href = "/login";
   }
 

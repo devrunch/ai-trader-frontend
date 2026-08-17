@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE_URL } from "@/lib/api/client";
 
 export default function LoginPage() {
   const [email, setEmail]       = useState("");
@@ -17,7 +16,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/login`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -38,7 +37,7 @@ export default function LoginPage() {
   }
 
   function handleGoogle() {
-    window.location.href = `${API_URL}/api/auth/google`;
+    window.location.href = `${API_BASE_URL}/api/auth/google`;
   }
 
   return (

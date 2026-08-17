@@ -5,25 +5,31 @@
  * currently active must never be accepted, since a stale in-flight
  * unsubscribe must not leak a price update into the wrong chart.
  */
+import { describe, it } from "vitest";
 import { shouldAcceptTick } from "./use-live-quote";
 
-/* Test case: accepts a tick matching the current symbol and exchange */
-const test1 = shouldAcceptTick(
-  { symbol: "RELIANCE", exchange: "NSE" },
-  { symbol: "RELIANCE", exchange: "NSE" },
-) === true;
-if (!test1) throw new Error("Test 1 failed: should accept matching tick");
+describe("shouldAcceptTick", () => {
+  it("accepts a tick matching the current symbol and exchange", () => {
+    const test1 = shouldAcceptTick(
+      { symbol: "RELIANCE", exchange: "NSE" },
+      { symbol: "RELIANCE", exchange: "NSE" },
+    ) === true;
+    if (!test1) throw new Error("Test 1 failed: should accept matching tick");
+  });
 
-/* Test case: rejects a tick for a different symbol */
-const test2 = shouldAcceptTick(
-  { symbol: "TCS", exchange: "NSE" },
-  { symbol: "RELIANCE", exchange: "NSE" },
-) === false;
-if (!test2) throw new Error("Test 2 failed: should reject different symbol");
+  it("rejects a tick for a different symbol", () => {
+    const test2 = shouldAcceptTick(
+      { symbol: "TCS", exchange: "NSE" },
+      { symbol: "RELIANCE", exchange: "NSE" },
+    ) === false;
+    if (!test2) throw new Error("Test 2 failed: should reject different symbol");
+  });
 
-/* Test case: rejects a tick for the same symbol on a different exchange */
-const test3 = shouldAcceptTick(
-  { symbol: "RELIANCE", exchange: "BSE" },
-  { symbol: "RELIANCE", exchange: "NSE" },
-) === false;
-if (!test3) throw new Error("Test 3 failed: should reject different exchange");
+  it("rejects a tick for the same symbol on a different exchange", () => {
+    const test3 = shouldAcceptTick(
+      { symbol: "RELIANCE", exchange: "BSE" },
+      { symbol: "RELIANCE", exchange: "NSE" },
+    ) === false;
+    if (!test3) throw new Error("Test 3 failed: should reject different exchange");
+  });
+});

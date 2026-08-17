@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { getQuote, type Quote } from "@/lib/api";
+import { API_BASE_URL } from "@/lib/api/client";
 
 /**
  * One module-level singleton socket, shared by every component instance
@@ -16,7 +17,7 @@ let sharedSocket: Socket | null = null;
 
 function getSocket(): Socket {
   if (!sharedSocket) {
-    sharedSocket = io({ withCredentials: true });
+    sharedSocket = io(API_BASE_URL, { withCredentials: true });
   }
   return sharedSocket;
 }
@@ -29,8 +30,9 @@ export function shouldAcceptTick(
   return payload.symbol === current.symbol && payload.exchange === current.exchange;
 }
 
-export function useLiveQuote(symbol: string, exchange: string): Quote | null {
+export function useLiveQuote(symbol: string, exchange: string): { quote: Quote | null; connected: boolean } {
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [connected, setConnected] = useState(() => sharedSocket?.connected ?? false);
   const currentRef = useRef({ symbol, exchange });
   // eslint-disable-next-line react-hooks/refs
   currentRef.current = { symbol, exchange };
@@ -52,15 +54,20 @@ export function useLiveQuote(symbol: string, exchange: string): Quote | null {
       socket.emit("subscribe_symbol", { symbol: s, exchange: e });
     };
 
+    const onConnect = () => { setConnected(true); subscribeCurrent(); };
+    const onDisconnect = () => setConnected(false);
+
     const onTick = (payload: Quote) => {
       if (shouldAcceptTick(payload, currentRef.current)) {
         setQuote(payload);
       }
     };
 
-    socket.on("connect", subscribeCurrent);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onDisconnect);
     socket.on("tick", onTick);
-    if (socket.connected) subscribeCurrent();
+    if (socket.connected) { setConnected(true); subscribeCurrent(); }
 
     // Immediate snapshot so NSE/BSE (ticks only flow during market hours)
     // still show a price outside trading hours; live ticks supersede it.
@@ -73,11 +80,13 @@ export function useLiveQuote(symbol: string, exchange: string): Quote | null {
       .catch(() => {});
 
     return () => {
-      socket.off("connect", subscribeCurrent);
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onDisconnect);
       socket.off("tick", onTick);
       socket.emit("unsubscribe_symbol", { symbol, exchange });
     };
   }, [symbol, exchange]);
 
-  return quote;
+  return { quote, connected };
 }

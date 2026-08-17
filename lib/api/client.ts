@@ -1,6 +1,7 @@
 
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+/** The API's own origin — shared so every caller (fetch, SSE, the live-quote socket) targets the same host. */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 /** Default per-request budget. The chat route is allowed longer (see chatWithAI). */
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -68,7 +69,7 @@ export async function req<T>(path: string, init?: RequestInit & { timeoutMs?: nu
   const { timeoutMs = DEFAULT_TIMEOUT_MS, ...rest } = init ?? {};
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, {
+    res = await fetch(`${API_BASE_URL}${path}`, {
       credentials: "include",          // send httpOnly JWT cookie
       headers: { "Content-Type": "application/json" },
       signal: AbortSignal.timeout(timeoutMs),

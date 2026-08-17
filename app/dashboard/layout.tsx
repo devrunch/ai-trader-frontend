@@ -5,8 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { MarketStatusProvider, useMarketStatus, nextOpenLabel } from "@/lib/market-status";
 import { useCurrentUser } from "@/lib/use-current-user";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE_URL } from "@/lib/api/client";
 
 const TABS = [
   { href: "/dashboard/brief",     label: "Brief"     },
@@ -134,7 +133,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     try {
-      await fetch(`${API_URL}/api/auth/logout`, { method: "POST", credentials: "include" });
+      await fetch(`${API_BASE_URL}/api/auth/logout`, { method: "POST", credentials: "include" });
     } catch { /* ignore */ }
     window.location.href = "/login";
   }

@@ -1,13 +1,12 @@
 import {
   ApiError,
+  API_BASE_URL,
   getChatTurn,
   humanMessage,
   type AgentEvent,
   type ChatResponse,
   type ChatHistoryItem,
 } from "./api";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 /**
  * The terminal event of a stream: everything `POST /api/signals/chat` would have
@@ -63,7 +62,7 @@ async function run(
   handlers: ChatStreamHandlers,
   signal: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/api/signals/chat/stream`, {
+  const res = await fetch(`${API_BASE_URL}/api/signals/chat/stream`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },

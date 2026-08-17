@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE_URL } from "@/lib/api/client";
 
 export default function RegisterPage() {
   const [email,    setEmail]    = useState("");
@@ -20,7 +19,7 @@ export default function RegisterPage() {
     if (password.length < 8)  { setError("Password must be at least 8 characters"); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/register`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -39,7 +38,7 @@ export default function RegisterPage() {
   }
 
   function handleGoogle() {
-    window.location.href = `${API_URL}/api/auth/google`;
+    window.location.href = `${API_BASE_URL}/api/auth/google`;
   }
 
   return (

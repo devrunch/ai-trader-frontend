@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE_URL } from "@/lib/api/client";
 
 export interface CurrentUser {
   id: string;
@@ -26,7 +25,7 @@ export function useCurrentUser(): { user: CurrentUser | null; loading: boolean }
 
   useEffect(() => {
     let alive = true;
-    fetch(`${API_URL}/api/auth/me`, { credentials: "include" })
+    fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (alive) setUser(data); })
       .catch(() => undefined)
