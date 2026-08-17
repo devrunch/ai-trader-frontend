@@ -5,12 +5,7 @@
  * currently active must never be accepted, since a stale in-flight
  * unsubscribe must not leak a price update into the wrong chart.
  */
-function shouldAcceptTick(
-  payload: { symbol: string; exchange: string },
-  current: { symbol: string; exchange: string },
-): boolean {
-  return payload.symbol === current.symbol && payload.exchange === current.exchange;
-}
+import { shouldAcceptTick } from "./use-live-quote";
 
 /* Test case: accepts a tick matching the current symbol and exchange */
 const test1 = shouldAcceptTick(

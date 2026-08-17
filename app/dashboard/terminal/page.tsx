@@ -20,6 +20,7 @@ import {
   type ApiPosition,
   type ChatDrawing,
   type SymbolMatch,
+  type Quote,
 } from "@/lib/api";
 import { PERIODS } from "@/lib/periods";
 import { useChartLayout } from "@/lib/use-chart-layout";
@@ -66,8 +67,6 @@ const TRADABLE_EXCHANGES = new Set(["NSE", "BSE"]);
 const SIGNAL_EXCHANGES = new Set(["NSE", "BSE"]);
 
 const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$" };
-
-type Quote = { ltp: number; change: number; change_percent: number };
 
 function fromApiSignal(s: ApiSignal): DisplaySignal {
   return {
@@ -309,7 +308,9 @@ export default function TerminalPage() {
     Promise.allSettled(watchlist.map(w => getQuote(w.symbol, w.exchange)))
       .then(results => {
         const map: Record<string, Quote> = {};
-        results.forEach((r, i) => { if (r.status === "fulfilled") map[watchlist[i].symbol] = r.value; });
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled") map[watchlist[i].symbol] = { ...r.value, exchange: watchlist[i].exchange };
+        });
         setSuggestQuotes(map);
       });
   }, [watchlist]);
