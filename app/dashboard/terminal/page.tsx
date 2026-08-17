@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import { PERIODS } from "@/lib/periods";
 import { useChartLayout } from "@/lib/use-chart-layout";
+import { useLiveQuote } from "@/lib/use-live-quote";
 import { useMarketStatus } from "@/lib/market-status";
 import { CandlestickChart, type Chart } from "@/components/CandlestickChart";
 import { OrderTicket, type OrderPrefill } from "@/components/OrderTicket";
@@ -101,10 +102,7 @@ export default function TerminalPage() {
   const [barsError, setBarsError]           = useState("");
   /** Bumped by the chart's retry button. */
   const [barsReload, setBarsReload]         = useState(0);
-  const [quote, setQuote]                   = useState<Quote | null>(null);
-  /** The quote fetch failed. Distinct from "not loaded yet" — a failure must
-   *  never render as ₹0.00 in green. */
-  const [quoteFailed, setQuoteFailed]       = useState(false);
+  const quote = useLiveQuote(activeSymbol, activeExchange);
   const [suggestQuotes, setSuggestQuotes]   = useState<Record<string, Quote>>({});
 
   const [watchlist, setWatchlist]           = useState<ApiWatchlistItem[]>([]);
@@ -119,7 +117,7 @@ export default function TerminalPage() {
   const [positionsReload, setPositionsReload] = useState(0);
 
   /* One shared market-status poll, from the dashboard layout. */
-  const { isLive: marketIsLive, phase: marketPhase } = useMarketStatus();
+  const { phase: marketPhase } = useMarketStatus();
   const [asking, setAsking]               = useState(false);
   const [askedEmpty, setAskedEmpty]       = useState(false);
   const [askError, setAskError]           = useState("");
@@ -315,21 +313,6 @@ export default function TerminalPage() {
         setSuggestQuotes(map);
       });
   }, [watchlist]);
-
-  /* Live quote for the active symbol.
-     The 5s poll runs only while the session is live: outside market hours it
-     burns rate limit against a feed that cannot change, and the motion itself
-     implies a liveness the data does not have. */
-  useEffect(() => {
-    let alive = true;
-    const load = () => getQuote(activeSymbol, activeExchange)
-      .then(q => { if (alive) { setQuote(q); setQuoteFailed(false); } })
-      .catch(() => { if (alive) { setQuote(null); setQuoteFailed(true); } });
-    load();
-    if (!marketIsLive) return () => { alive = false; };
-    const id = setInterval(load, 5_000);
-    return () => { alive = false; clearInterval(id); };
-  }, [activeSymbol, activeExchange, marketIsLive]);
 
   /* Historical bars */
   // How far back the chart has actually fetched — starts at the selected
@@ -601,7 +584,7 @@ export default function TerminalPage() {
           <span className="text-[10px] text-muted-foreground font-mono">{activeExchange}</span>
           {ltp === null ? (
             <span className="font-mono text-sm text-muted-foreground ml-1" role="status">
-              {quoteFailed ? "price unavailable" : "loading…"}
+              loading…
             </span>
           ) : (
             <>
