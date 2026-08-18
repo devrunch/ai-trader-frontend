@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  transpilePackages: ["diascript"],
   async redirects() {
     return [
       // IA collapse to 3 tabs — old destinations fold into the new ones.

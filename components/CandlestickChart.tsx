@@ -76,7 +76,7 @@ export type ChartSignal = {
  * for a fixed size (landing demo). `onReady` hands the chart instance to the
  * parent so a drawing-tools rail / AI agent can draw on it. */
 /** Indicators that draw over the candles (vs. their own sub-pane below). */
-const MAIN_PANE_INDICATORS = new Set(["EMA", "MA", "SMA", "BOLL", "SAR", "BBI"]);
+const MAIN_PANE_INDICATORS = new Set(["EMA", "MA", "SMA", "BOLL", "SAR", "BBI", "DIA_EMA20"]);
 
 export function CandlestickChart({ bars, signal, height = 320, fill = false, indicators = ["EMA", "VOL"], livePrice, onReady, onLoadMore }: {
   bars: ApiOhlcBar[];
@@ -126,9 +126,16 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
     let cleanup: (() => void) | null = null;
 
     // Dynamic import — klinecharts touches browser APIs, so it must never be
-    // evaluated during SSR/prerender.
-    import("klinecharts").then(({ init, dispose }) => {
+    // evaluated during SSR/prerender. diascript-indicators.ts transitively
+    // imports the real klinecharts package too (it registers indicators
+    // against it), so it needs the same dynamic-import treatment, not a
+    // static top-level import that would crash SSR.
+    Promise.all([
+      import("klinecharts"),
+      import("@/lib/diascript-indicators"),
+    ]).then(([{ init, dispose }, { registerDiascriptIndicators }]) => {
       if (cancelled || !el) return;
+      registerDiascriptIndicators();
       const chart = init(el) as Chart;
       chartRef.current = chart;
 
@@ -324,11 +331,17 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
 
     for (const name of wanted) {
       if (applied.has(name)) continue;
+      // isStack: true — without it, klinecharts' createIndicator evicts
+      // every OTHER indicator already on that pane before adding this one
+      // (StoreImp.addIndicator calls removeIndicator({paneId}) first when
+      // isStack is falsy), not just its own tooltip row. Checking two
+      // main-pane overlays silently dropped whichever was added first.
       const id = MAIN_PANE_INDICATORS.has(name)
         ? chart.createIndicator(
             name === "EMA"
               ? { name, calcParams: [20, 50], paneId: "candle_pane" }
               : { name, paneId: "candle_pane" },
+            true,
           )
         : chart.createIndicator(name);
       if (id) applied.set(name, id);

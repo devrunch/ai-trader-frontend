@@ -26,6 +26,11 @@ export const INDICATOR_CATALOG: {
   { name: "MACD", label: "MACD",               group: "Oscillators" },
   { name: "RSI",  label: "RSI (14)",           group: "Oscillators" },
   { name: "KDJ",  label: "Stochastic (KDJ)",   group: "Oscillators" },
+  // Defined as diascript formulas (lib/diascript-indicators.ts) instead of
+  // klinecharts' own built-in catalog — proves the same toggle/pane
+  // machinery works unchanged for a script-defined indicator.
+  { name: "DIA_EMA20", label: "EMA 20 (diascript)", group: "Overlays" },
+  { name: "DIA_RSI14", label: "RSI 14 (diascript)", group: "Oscillators" },
 ];
 
 export interface IndicatorMenuProps {

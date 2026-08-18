@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ai-trader-frontend
 
-## Getting Started
+Next.js 14 trading terminal — charts, signal UI, chat with the AI analyst, paper trading. TypeScript, Tailwind.
 
-First, run the development server:
+Part of the [ai-trader](https://github.com/devrunch/ai-trader) monorepo — run via the umbrella repo's `docker compose up` for the full stack, or standalone against a running `ai-trader-api` for frontend-only work.
+
+## What's here
+
+| Path | Responsibility |
+|---|---|
+| `app/dashboard/terminal/` | The core screen — chart, search, watchlist, order ticket, signal/positions/chat panels |
+| `components/` | `CandlestickChart.tsx` (KLineCharts wrapper — pan-to-load-more, right-edge snap, indicator toggling), `OrderTicket.tsx`, `terminal/*` panel components, `ui/` (shadcn primitives) |
+| `lib/api/` | Typed REST client — one seam per domain, shared error handling and timeout |
+| `lib/use-live-quote.ts` | Real-time price ticks — one shared `socket.io-client` connection, used for every symbol/exchange unconditionally (which vendor answers is decided server-side) |
+| `lib/use-chart-layout.ts` | Persisted per-symbol chart layout (drawings, indicators) |
+| `middleware.ts` | Route guarding — dashboard routes require a session cookie |
+
+## Real-time price ticks
+
+`useLiveQuote(symbol, exchange)` connects once (module-level singleton socket) to `ai-trader-api`'s Socket.IO gateway, emits `subscribe_symbol`/`unsubscribe_symbol` on connect and on symbol change, and returns `{ quote, connected }` — `connected` reflects the actual socket state so the UI can distinguish "no tick yet" from "the connection dropped," rather than showing an indefinite, unlabeled loading state. An immediate one-shot REST snapshot backs it up so a symbol still shows a price outside market hours (when no live tick will ever arrive), superseded the moment a real tick lands.
+
+## Local development
 
 ```bash
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL, etc.
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000. Needs a reachable `ai-trader-api` — either the full stack via the umbrella repo's `docker compose up`, or a locally running `ai-trader-api` pointed at by `NEXT_PUBLIC_API_URL`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Testing
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npx tsc --noEmit    # types
+npx eslint .        # lint
+npm test            # vitest
+npm run build       # production build
+```
 
-## Learn More
+## Notes
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `NEXT_PUBLIC_API_URL` is inlined into the JS bundle at `next build` time, not read at container start — a production rebuild is required whenever the API's public origin changes (handled by the umbrella repo's `deploy.sh`).
+- Price-delay disclosure is exchange-conditional: NSE/BSE get genuinely real-time Kite-backed ticks; other exchanges are served via a ~15-minute-delayed yfinance poll and show a delay notice.
