@@ -211,7 +211,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
 
       {/* ── Content ── */}
       <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full max-w-[1600px] mx-auto px-4 sm:px-8 w-full overflow-hidden">
+        <div className="h-full max-w-400 mx-auto px-4 sm:px-8 w-full overflow-hidden">
           {children}
         </div>
       </main>

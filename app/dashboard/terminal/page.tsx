@@ -33,7 +33,7 @@ import { OrderTicket, type OrderPrefill } from "@/components/OrderTicket";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ErrorState } from "@/components/ErrorState";
 import { DrawingToolbar, type DrawTool } from "@/components/terminal/DrawingToolbar";
-import { IndicatorMenu } from "@/components/terminal/IndicatorMenu";
+import { IndicatorSearchModal } from "@/components/terminal/IndicatorSearchModal";
 import { SignalPanel, type DisplaySignal } from "@/components/terminal/SignalPanel";
 import { PositionsPanel } from "@/components/terminal/PositionsPanel";
 import { Disclaimer } from "@/components/Disclaimer";
@@ -686,7 +686,7 @@ export default function TerminalPage() {
 
         <div className="flex-1" />
 
-        <IndicatorMenu active={indicators} onToggle={toggleIndicator} />
+        <IndicatorSearchModal active={indicators} onToggle={toggleIndicator} />
 
         <div className="w-px h-5 bg-border mx-1 hidden lg:block" />
 

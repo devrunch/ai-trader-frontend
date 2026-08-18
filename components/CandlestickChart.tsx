@@ -76,7 +76,19 @@ export type ChartSignal = {
  * for a fixed size (landing demo). `onReady` hands the chart instance to the
  * parent so a drawing-tools rail / AI agent can draw on it. */
 /** Indicators that draw over the candles (vs. their own sub-pane below). */
-const MAIN_PANE_INDICATORS = new Set(["EMA", "MA", "SMA", "BOLL", "SAR", "BBI", "DIA_EMA20"]);
+const MAIN_PANE_INDICATORS = new Set([
+  "EMA", "MA", "SMA", "BOLL", "SAR", "BBI", "DIA_EMA20",
+  // Price-scale diascript indicators from the Trend/Volume expansion —
+  // everything else new (ADX, Aroon, oscillators, volatility ratios,
+  // volume-only series) is unbounded/percentage-scale and belongs in its
+  // own sub-pane, the same as MACD/RSI/KDJ already do.
+  "DIA_DONCHIAN_UPPER", "DIA_DONCHIAN_MID", "DIA_DONCHIAN_LOWER",
+  "DIA_ENVELOPE_UPPER", "DIA_ENVELOPE_LOWER",
+  "DIA_ICHIMOKU_TENKAN", "DIA_ICHIMOKU_KIJUN", "DIA_ICHIMOKU_SENKOU_A", "DIA_ICHIMOKU_SENKOU_B",
+  "DIA_KELTNER_UPPER", "DIA_KELTNER_MID", "DIA_KELTNER_LOWER",
+  "DIA_HMA", "DIA_DEMA", "DIA_TEMA", "DIA_SUPERTREND",
+  "DIA_VWAP", "DIA_VWMA",
+]);
 
 export function CandlestickChart({ bars, signal, height = 320, fill = false, indicators = ["EMA", "VOL"], livePrice, onReady, onLoadMore }: {
   bars: ApiOhlcBar[];
@@ -126,16 +138,18 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
     let cleanup: (() => void) | null = null;
 
     // Dynamic import — klinecharts touches browser APIs, so it must never be
-    // evaluated during SSR/prerender. diascript-indicators.ts transitively
-    // imports the real klinecharts package too (it registers indicators
-    // against it), so it needs the same dynamic-import treatment, not a
-    // static top-level import that would crash SSR.
+    // evaluated during SSR/prerender. diascript-indicators.ts's own module
+    // scope is SSR-safe (its DIASCRIPT_CATALOG data is also imported
+    // statically elsewhere, by IndicatorMenu.tsx, for the search modal),
+    // but registerDiascriptIndicators() itself lazily imports the real
+    // klinecharts package internally — awaited here for the same reason.
     Promise.all([
       import("klinecharts"),
       import("@/lib/diascript-indicators"),
-    ]).then(([{ init, dispose }, { registerDiascriptIndicators }]) => {
+    ]).then(async ([{ init, dispose }, { registerDiascriptIndicators }]) => {
       if (cancelled || !el) return;
-      registerDiascriptIndicators();
+      await registerDiascriptIndicators();
+      if (cancelled || !el) return;
       const chart = init(el) as Chart;
       chartRef.current = chart;
 

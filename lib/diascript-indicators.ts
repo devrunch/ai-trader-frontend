@@ -1,5 +1,12 @@
 import { InMemoryDataAdapter } from "diascript";
-import { registerDiascriptIndicator } from "diascript/klinecharts";
+// NOT a static top-level import: "diascript/klinecharts" transitively pulls
+// in the real klinecharts package, which touches `window` at import time.
+// IndicatorMenu.tsx imports DIASCRIPT_CATALOG from this file at module
+// scope (for the search modal's catalog data), and IndicatorMenu.tsx is
+// reachable from terminal/page.tsx's server-rendered tree -- a static
+// import here would crash Next's SSR prerender with "window is not
+// defined". Loaded lazily inside registerDiascriptIndicators() instead,
+// which only ever runs client-side inside CandlestickChart's useEffect.
 
 /**
  * Indicators defined as diascript formulas instead of klinecharts' own
@@ -373,12 +380,16 @@ export const DIASCRIPT_CATALOG: DiascriptIndicatorDef[] = [
 /** Registers every diascript-backed indicator with klinecharts. Idempotent
  * per klinecharts' own registerIndicator (re-registering the same name just
  * overwrites the prior definition) — safe to call on every module load,
- * including React Fast Refresh in dev. */
+ * including React Fast Refresh in dev. Async because "diascript/klinecharts"
+ * is loaded lazily here (see the note at the top of this file) — the caller
+ * (CandlestickChart.tsx) already awaits this alongside the dynamic
+ * `import("klinecharts")` it does for the same SSR-safety reason. */
 let registered = false;
-export function registerDiascriptIndicators(): void {
+export async function registerDiascriptIndicators(): Promise<void> {
   if (registered) return;
   registered = true;
 
+  const { registerDiascriptIndicator } = await import("diascript/klinecharts");
   for (const def of DIASCRIPT_CATALOG) {
     registerDiascriptIndicator(def.name, {
       source: def.source,
