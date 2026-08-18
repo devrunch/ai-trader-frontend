@@ -356,7 +356,13 @@ export default function TerminalPage() {
             adapter: noopAdapter,
             symbolTicker: "",
           });
-          const id = chart.createIndicator(spec.name, true);
+          // klinecharts only overlays on the price pane when given an
+          // object with paneId: "candle_pane" -- a bare name always gets a
+          // fresh sub-pane, which is why every agent-generated indicator
+          // used to land below the chart regardless of what it actually was.
+          const id = spec.pane === "main"
+            ? chart.createIndicator({ name: spec.name, paneId: "candle_pane" }, true)
+            : chart.createIndicator(spec.name, true);
           if (id) {
             attached.set(spec.name, id);
           } else {

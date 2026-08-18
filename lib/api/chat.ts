@@ -28,6 +28,11 @@ export interface CustomIndicatorSpec {
   source: string;
   outputName: string;
   displayLabel: string;
+  /** Which pane this renders in — the writer LLM decides this (it already
+   * knows "Gaussian filter" overlays price and "RSI-style" doesn't), since
+   * klinecharts needs an explicit paneId to overlay on the price pane and
+   * otherwise always creates a fresh sub-pane. */
+  pane: "main" | "sub";
 }
 export interface ChatResults {
   strategy?: ChatStrategyResult;
