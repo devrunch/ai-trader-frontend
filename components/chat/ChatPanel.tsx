@@ -6,6 +6,7 @@ import {
   type AgentEvent,
   type ChatDrawing,
   type ChatResults,
+  type CustomIndicatorSpec,
 } from "@/lib/api";
 import { streamChat, type StreamedTurn } from "@/lib/chat-stream";
 import { AgentProgress } from "./AgentProgress";
@@ -31,6 +32,8 @@ export interface ChatPanelProps {
   onRemoveDrawings?: (turnId: string) => void;
   /** The agent asked to toggle chart indicators. */
   onIndicators: (change: { add?: string[]; remove?: string[] }) => void;
+  /** The agent authored one or more custom (diascript) indicators. */
+  onCustomIndicator: (specs: CustomIndicatorSpec[]) => void;
   /**
    * The user chose to act on a trade the agent worked through. Carries the turn
    * id, which is what lets the resulting order be traced back to this analysis.
@@ -47,7 +50,7 @@ export interface ChatPanelProps {
  * streamed turn, the live progress feed, and restoring the last conversation.
  */
 export function ChatPanel({
-  symbol, exchange, onDrawings, onRemoveDrawings, onIndicators, onUseTrade,
+  symbol, exchange, onDrawings, onRemoveDrawings, onIndicators, onCustomIndicator, onUseTrade,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -101,6 +104,9 @@ export function ChatPanel({
       const indicators = (turn.results as ChatResults | undefined)?.chart_indicators;
       if (indicators?.add?.length || indicators?.remove?.length) onIndicators(indicators);
 
+      const customIndicators = (turn.results as ChatResults | undefined)?.custom_indicators;
+      if (customIndicators?.length) onCustomIndicator(customIndicators);
+
       setMessages((m) => [
         ...m,
         {
@@ -114,7 +120,7 @@ export function ChatPanel({
         },
       ]);
     },
-    [onDrawings, onIndicators],
+    [onDrawings, onIndicators, onCustomIndicator],
   );
 
   function send() {

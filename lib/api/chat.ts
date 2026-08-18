@@ -23,11 +23,19 @@ export interface ChatSimulationResult {
   entry: number; target: number; stop: number; quantity: number;
   profit_at_target: number; loss_at_stop: number; reward_risk: number; capital_required: number;
 }
+export interface CustomIndicatorSpec {
+  name: string;
+  source: string;
+  outputName: string;
+  displayLabel: string;
+}
 export interface ChatResults {
   strategy?: ChatStrategyResult;
   simulation?: ChatSimulationResult;
   /** Agent asked to toggle indicators on the chart */
   chart_indicators?: { add: string[]; remove: string[] };
+  /** Agent authored one or more custom (diascript) indicators */
+  custom_indicators?: CustomIndicatorSpec[];
 }
 export interface ChatResponse {
   message: string;

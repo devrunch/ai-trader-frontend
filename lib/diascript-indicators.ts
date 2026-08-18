@@ -12,7 +12,7 @@ import { registerDiascriptIndicator } from "diascript/klinecharts";
  * isn't needed for this first pass — an InMemoryDataAdapter with nothing
  * registered is enough, since it's never actually called.
  */
-const noopAdapter = new InMemoryDataAdapter();
+export const noopAdapter = new InMemoryDataAdapter();
 
 export const DIASCRIPT_EMA_20 = "DIA_EMA20";
 export const DIASCRIPT_RSI_14 = "DIA_RSI14";

@@ -20,6 +20,7 @@ import {
   type ApiWatchlistItem,
   type ApiPosition,
   type ChatDrawing,
+  type CustomIndicatorSpec,
   type SymbolMatch,
   type Quote,
 } from "@/lib/api";
@@ -295,6 +296,35 @@ export default function TerminalPage() {
       (change.remove ?? []).forEach(n => next.delete(n));
       return [...next];
     });
+  }
+
+  /* The agent can author brand-new (diascript) indicators at runtime — unlike
+     applyChartIndicators above, these aren't in klinecharts' built-in catalog
+     yet, so each one has to be registered before it can be created. Tracked
+     here so the same indicator, mentioned again later in the conversation,
+     is registered once and just re-attached. */
+  const registeredCustomIndicators = useRef(new Set<string>());
+  async function applyCustomIndicators(specs: CustomIndicatorSpec[]) {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const [{ registerDiascriptIndicator }, { noopAdapter }] = await Promise.all([
+      import("diascript/klinecharts"),
+      import("@/lib/diascript-indicators"),
+    ]);
+
+    for (const spec of specs) {
+      if (!registeredCustomIndicators.current.has(spec.name)) {
+        registerDiascriptIndicator(spec.name, {
+          source: spec.source,
+          outputName: spec.outputName,
+          adapter: noopAdapter,
+          symbolTicker: "",
+        });
+        registeredCustomIndicators.current.add(spec.name);
+      }
+      chart.createIndicator(spec.name, true);
+    }
   }
 
   function toggleIndicator(name: string) {
@@ -773,6 +803,7 @@ export default function TerminalPage() {
                 onDrawings={applyDrawings}
                 onRemoveDrawings={removeTurnDrawings}
                 onIndicators={applyChartIndicators}
+                onCustomIndicator={applyCustomIndicators}
                 onUseTrade={({ side, price, turnId }) => {
                   // The turn id travels with the prefill, so the order records
                   // which analysis it came out of.
