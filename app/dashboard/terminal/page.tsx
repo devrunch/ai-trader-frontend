@@ -300,35 +300,76 @@ export default function TerminalPage() {
 
   /* The agent can author brand-new (diascript) indicators at runtime — unlike
      applyChartIndicators above, these aren't in klinecharts' built-in catalog
-     yet, so each one has to be registered before it can be created. Tracks
-     which names are already ATTACHED to this chart (same shape as
-     CandlestickChart's own appliedRef) — not just registered — so the same
-     indicator, mentioned again later in the conversation, is a no-op the
-     second time. createIndicator has no "already attached" check of its own:
-     it hands back a fresh id/paneId on every call, so calling it twice for
-     the same name silently produces two panes rather than reusing one. */
-  const attachedCustomIndicators = useRef(new Set<string>());
-  async function applyCustomIndicators(specs: CustomIndicatorSpec[]) {
-    const chart = chartRef.current;
-    if (!chart) return;
+     yet, so each one has to be registered before it can be attached.
 
-    const [{ registerDiascriptIndicator }, { noopAdapter }] = await Promise.all([
-      import("diascript/klinecharts"),
-      import("@/lib/diascript-indicators"),
-    ]);
-
-    for (const spec of specs) {
-      if (attachedCustomIndicators.current.has(spec.name)) continue;
-      registerDiascriptIndicator(spec.name, {
-        source: spec.source,
-        outputName: spec.outputName,
-        adapter: noopAdapter,
-        symbolTicker: "",
-      });
-      chart.createIndicator(spec.name, true);
-      attachedCustomIndicators.current.add(spec.name);
-    }
+     The specs themselves live in state, not just a ref: CandlestickChart's
+     chart-init effect disposes and recreates the chart instance on an
+     ordinary symbol/exchange/period switch or a data retry (its effect
+     depends on `bars`), which wipes every indicator off the new instance.
+     Built-in indicators survive that because they live in `indicators` state
+     and get re-applied by an effect keyed on chartReady; a ref-only "already
+     attached" bookkeeping would survive the same rebuild with stale state
+     pointing at a chart that's gone, permanently losing the indicator. */
+  const [customIndicatorSpecs, setCustomIndicatorSpecs] = useState<CustomIndicatorSpec[]>([]);
+  function applyCustomIndicators(specs: CustomIndicatorSpec[]) {
+    setCustomIndicatorSpecs(prev => {
+      const byName = new Map(prev.map(s => [s.name, s] as const));
+      for (const spec of specs) byName.set(spec.name, spec);
+      return Array.from(byName.values());
+    });
   }
+
+  /* Registers + attaches every known custom indicator against whichever chart
+     instance currently exists. Keyed on chartReady (bumped in onReady below,
+     on every fresh `init(el)`) as well as the specs, so a chart rebuild
+     re-attaches everything instead of leaving the new instance blank.
+
+     `attached` tracks name -> id per CHART INSTANCE (reset whenever the
+     instance changes, same shape as CandlestickChart's own appliedRef) so a
+     later spec arriving on the SAME chart doesn't recreate a pane that's
+     already there — createIndicator has no "already attached" check of its
+     own, it hands back a fresh id on every call. The id is checked for
+     truthiness before being counted as attached, matching CandlestickChart's
+     own pattern, and each spec gets its own try/catch — one malformed
+     formula must not stop the rest of the batch from rendering. */
+  const attachedRef = useRef<{ chart: Chart | null; ids: Map<string, string> }>({ chart: null, ids: new Map() });
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || customIndicatorSpecs.length === 0) return;
+    if (attachedRef.current.chart !== chart) attachedRef.current = { chart, ids: new Map() };
+    const attached = attachedRef.current.ids;
+    let cancelled = false;
+
+    (async () => {
+      const [{ registerDiascriptIndicator }, { noopAdapter }] = await Promise.all([
+        import("diascript/klinecharts"),
+        import("@/lib/diascript-indicators"),
+      ]);
+      if (cancelled) return;
+
+      for (const spec of customIndicatorSpecs) {
+        if (attached.has(spec.name)) continue;
+        try {
+          registerDiascriptIndicator(spec.name, {
+            source: spec.source,
+            outputName: spec.outputName,
+            adapter: noopAdapter,
+            symbolTicker: "",
+          });
+          const id = chart.createIndicator(spec.name, true);
+          if (id) {
+            attached.set(spec.name, id);
+          } else {
+            console.warn(`Custom indicator "${spec.name}" did not attach to the chart`);
+          }
+        } catch (err) {
+          console.error(`Failed to render custom indicator "${spec.name}"`, err);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [customIndicatorSpecs, chartReady]);
 
   function toggleIndicator(name: string) {
     setIndicators(list => list.includes(name) ? list.filter(x => x !== name) : [...list, name]);
