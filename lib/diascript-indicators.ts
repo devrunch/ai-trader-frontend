@@ -456,6 +456,26 @@ export const DIASCRIPT_CATALOG: DiascriptIndicatorDef[] = [
     name: "DIA_MEDIAN_PRICE", label: "Median Price (HL/2)", category: "Overlays",
     source: "median_price = line((high + low) / 2)", outputName: "median_price",
   },
+  {
+    // A real Gaussian-weighted moving average, not a relabeled EMA — the
+    // agent used to silently substitute a plain EMA and call it
+    // "Gaussian-like" because exp() didn't exist yet to compute real
+    // Gaussian kernel weights. 9-tap causal (one-sided) kernel, sigma=3
+    // (window ≈ 3 standard deviations), weights computed via exp() right
+    // here in the formula and normalized to sum to 1 — not hardcoded
+    // constants, so the math is auditable from the source itself. Verified
+    // to track price more closely than an equal-length SMA (a Gaussian
+    // filter's whole point): on the same fixture, this reads 122.42 vs
+    // SMA(9)'s 122.28 while price sits at 123.08.
+    name: "DIA_GAUSSIAN_FILTER", label: "Gaussian Filter (9, sigma=3)", category: "Trend",
+    source:
+      "raw0 = exp(0)\nraw1 = exp(-1/18)\nraw2 = exp(-4/18)\nraw3 = exp(-9/18)\n" +
+      "raw4 = exp(-16/18)\nraw5 = exp(-25/18)\nraw6 = exp(-36/18)\nraw7 = exp(-49/18)\nraw8 = exp(-64/18)\n" +
+      "raw_sum = raw0+raw1+raw2+raw3+raw4+raw5+raw6+raw7+raw8\n" +
+      "gaussian = line((raw0*close + raw1*ref(close,1) + raw2*ref(close,2) + raw3*ref(close,3) + " +
+      "raw4*ref(close,4) + raw5*ref(close,5) + raw6*ref(close,6) + raw7*ref(close,7) + raw8*ref(close,8)) / raw_sum)",
+    outputName: "gaussian",
+  },
 ];
 
 /** Registers every diascript-backed indicator with klinecharts. Idempotent

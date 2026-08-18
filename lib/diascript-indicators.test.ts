@@ -276,4 +276,25 @@ describe("Phase 2 batch — golden values", () => {
     expect(avg).toBeCloseTo((lastBar.open + lastBar.high + lastBar.low + lastBar.close) / 4, 6);
     expect(median).toBeCloseTo((lastBar.high + lastBar.low) / 2, 6);
   });
+
+  it("Gaussian Filter is a real exp()-weighted average, not a relabeled EMA — verified against independently-computed kernel weights, and confirmed to track price more closely than an equal-length SMA", async () => {
+    const gaussian = await lastValueOf("DIA_GAUSSIAN_FILTER") as number;
+
+    // Independently compute the same 9-tap sigma=3 kernel in plain JS
+    // (not by re-reading the formula's own constants) and apply it to the
+    // fixture's last 9 closes by hand, as the actual ground truth.
+    const sigma = 3;
+    const weights = Array.from({ length: 9 }, (_, k) => Math.exp(-(k * k) / (2 * sigma * sigma)));
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+    const last9Closes = FIXTURE_BARS.slice(-9).map((b) => b.close).reverse(); // [close, ref(close,1), ..., ref(close,8)]
+    const expected = last9Closes.reduce((acc, c, k) => acc + weights[k] * c, 0) / weightSum;
+    expect(gaussian).toBeCloseTo(expected, 4);
+
+    // The defining property of a Gaussian filter vs. a boxcar (SMA) average
+    // of the same length: it weights recent bars more heavily, so it sits
+    // closer to the current close than an equal-weighted SMA does.
+    const plainSma9 = last9Closes.reduce((a, b) => a + b, 0) / 9;
+    const lastClose = FIXTURE_BARS.at(-1)!.close;
+    expect(Math.abs(gaussian - lastClose)).toBeLessThan(Math.abs(plainSma9 - lastClose));
+  });
 });
