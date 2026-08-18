@@ -375,6 +375,87 @@ export const DIASCRIPT_CATALOG: DiascriptIndicatorDef[] = [
       "emv = line(sma(raw_emv, 14))",
     outputName: "emv",
   },
+
+  // -- Phase 2 batch: Vortex, Linear Regression, NVI, Chande Kroll, price refs --
+  {
+    name: "DIA_VORTEX_PLUS", label: "Vortex VI+ (14)", category: "Trend",
+    source:
+      "vm_plus = abs(high - ref(low,1))\ntr_v = true_range()\n" +
+      "vi_plus = line(sum(vm_plus,14) / sum(tr_v,14))",
+    outputName: "vi_plus",
+  },
+  {
+    name: "DIA_VORTEX_MINUS", label: "Vortex VI- (14)", category: "Trend",
+    source:
+      "vm_minus = abs(low - ref(high,1))\ntr_v = true_range()\n" +
+      "vi_minus = line(sum(vm_minus,14) / sum(tr_v,14))",
+    outputName: "vi_minus",
+  },
+  {
+    // Closed-form least-squares fit over a fixed 10-bar window (weights
+    // unrolled at author time, not a runtime loop) -- x = 0..9, oldest to
+    // newest, so sum_x/sum_x2 are the same fixed constants every bar.
+    name: "DIA_LINREG", label: "Linear Regression Curve (10)", category: "Trend",
+    source:
+      "sum_xy = 0*ref(close,9) + 1*ref(close,8) + 2*ref(close,7) + 3*ref(close,6) + 4*ref(close,5) + 5*ref(close,4) + 6*ref(close,3) + 7*ref(close,2) + 8*ref(close,1) + 9*close\n" +
+      "sum_y = ref(close,9)+ref(close,8)+ref(close,7)+ref(close,6)+ref(close,5)+ref(close,4)+ref(close,3)+ref(close,2)+ref(close,1)+close\n" +
+      "slope = (10*sum_xy - 45*sum_y) / (10*285 - 45*45)\n" +
+      "intercept = (sum_y - slope*45) / 10\n" +
+      "linreg = line(intercept + slope*9)",
+    outputName: "linreg",
+  },
+  {
+    name: "DIA_LINREG_SLOPE", label: "Linear Regression Slope (10)", category: "Trend",
+    source:
+      "sum_xy = 0*ref(close,9) + 1*ref(close,8) + 2*ref(close,7) + 3*ref(close,6) + 4*ref(close,5) + 5*ref(close,4) + 6*ref(close,3) + 7*ref(close,2) + 8*ref(close,1) + 9*close\n" +
+      "sum_y = ref(close,9)+ref(close,8)+ref(close,7)+ref(close,6)+ref(close,5)+ref(close,4)+ref(close,3)+ref(close,2)+ref(close,1)+close\n" +
+      "linreg_slope = line((10*sum_xy - 45*sum_y) / (10*285 - 45*45))",
+    outputName: "linreg_slope",
+  },
+  {
+    // Additive cumulative index: bar 0 hard-seeded to 1000, later bars add
+    // the period's ROC PERCENTAGE (not a fraction, not compounded against
+    // the running value) only on bars where volume fell vs. the prior bar.
+    name: "DIA_NVI", label: "Negative Volume Index", category: "Volume",
+    source:
+      "bar_count = prev(1) + 1\nhas_prior = bar_count > 1\n" +
+      "prior_close = held(has_prior, ref(close, 1))\nprior_vol = held(has_prior, ref(volume, 1))\n" +
+      "safe_prior_close = prior_close + (1 - has_prior)\n" +
+      "vol_down = has_prior * (volume < prior_vol)\n" +
+      "roc_pct = has_prior * 100 * (close - prior_close) / safe_prior_close\n" +
+      "nvi = line((1 - has_prior) * 1000 + has_prior * (prev(1) + vol_down * roc_pct))",
+    outputName: "nvi",
+  },
+  {
+    // Verified structurally against pandas_ta's real cksp source (p=10,
+    // x=1, q=9, Wilder-smoothed ATR — TradingView-mode defaults) — the
+    // formula shape matches exactly; a wider tolerance than most entries
+    // here is warranted since Wilder/RMA ATR's warm-up SEEDING convention
+    // (not its steady-state formula) can differ slightly by implementation
+    // and that difference compounds over a rolling max/min window.
+    name: "DIA_CHANDE_KROLL_LONG", label: "Chande Kroll Long Stop (10, 1, 9)", category: "Trend",
+    source:
+      "atr_ck = prev(1) * (9/10) + true_range() / 10\n" +
+      "first_high_stop = highest(high,10) - 1*atr_ck\n" +
+      "long_stop = line(highest(first_high_stop, 9))",
+    outputName: "long_stop",
+  },
+  {
+    name: "DIA_CHANDE_KROLL_SHORT", label: "Chande Kroll Short Stop (10, 1, 9)", category: "Trend",
+    source:
+      "atr_ck = prev(1) * (9/10) + true_range() / 10\n" +
+      "first_low_stop = lowest(low,10) + 1*atr_ck\n" +
+      "short_stop = line(lowest(first_low_stop, 9))",
+    outputName: "short_stop",
+  },
+  {
+    name: "DIA_AVG_PRICE", label: "Average Price (OHLC/4)", category: "Overlays",
+    source: "avg_price = line((open + high + low + close) / 4)", outputName: "avg_price",
+  },
+  {
+    name: "DIA_MEDIAN_PRICE", label: "Median Price (HL/2)", category: "Overlays",
+    source: "median_price = line((high + low) / 2)", outputName: "median_price",
+  },
 ];
 
 /** Registers every diascript-backed indicator with klinecharts. Idempotent

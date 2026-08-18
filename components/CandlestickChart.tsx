@@ -88,6 +88,8 @@ const MAIN_PANE_INDICATORS = new Set([
   "DIA_KELTNER_UPPER", "DIA_KELTNER_MID", "DIA_KELTNER_LOWER",
   "DIA_HMA", "DIA_DEMA", "DIA_TEMA", "DIA_SUPERTREND",
   "DIA_VWAP", "DIA_VWMA",
+  "DIA_LINREG", "DIA_CHANDE_KROLL_LONG", "DIA_CHANDE_KROLL_SHORT",
+  "DIA_AVG_PRICE", "DIA_MEDIAN_PRICE",
 ]);
 
 export function CandlestickChart({ bars, signal, height = 320, fill = false, indicators = ["EMA", "VOL"], livePrice, onReady, onLoadMore }: {

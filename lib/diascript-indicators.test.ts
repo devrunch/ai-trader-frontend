@@ -243,4 +243,37 @@ describe("Volume indicators — golden values", () => {
     const eom = await lastValueOf("DIA_EOM") as number;
     expect(Math.abs(eom - 9323.459142)).toBeLessThan(5);
   });
+
+  it("Negative Volume Index", async () => {
+    const nvi = await lastValueOf("DIA_NVI") as number;
+    expect(Math.abs(nvi - 1013.638146)).toBeLessThan(1);
+  });
+});
+
+describe("Phase 2 batch — golden values", () => {
+  it("Vortex VI+ / VI-", async () => {
+    expect(await lastValueOf("DIA_VORTEX_PLUS")).toBeCloseTo(1.120395, 1);
+    expect(await lastValueOf("DIA_VORTEX_MINUS")).toBeCloseTo(0.664998, 1);
+  });
+
+  it("Linear Regression Curve / Slope", async () => {
+    expect(await lastValueOf("DIA_LINREG")).toBeCloseTo(122.643889, 1);
+    expect(await lastValueOf("DIA_LINREG_SLOPE")).toBeCloseTo(0.094438, 1);
+  });
+
+  it("Chande Kroll Long/Short Stop (structural match — Wilder ATR warm-up seeding differs slightly from pandas_ta's, see catalog comment)", async () => {
+    const long = await lastValueOf("DIA_CHANDE_KROLL_LONG") as number;
+    const short = await lastValueOf("DIA_CHANDE_KROLL_SHORT") as number;
+    expect(Math.abs(long - 120.306849)).toBeLessThan(3);
+    expect(Math.abs(short - 112.845756)).toBeLessThan(7);
+    expect(long).toBeGreaterThan(short);
+  });
+
+  it("Average Price / Median Price are simple, self-evident price averages", async () => {
+    const avg = await lastValueOf("DIA_AVG_PRICE") as number;
+    const median = await lastValueOf("DIA_MEDIAN_PRICE") as number;
+    const lastBar = FIXTURE_BARS.at(-1)!;
+    expect(avg).toBeCloseTo((lastBar.open + lastBar.high + lastBar.low + lastBar.close) / 4, 6);
+    expect(median).toBeCloseTo((lastBar.high + lastBar.low) / 2, 6);
+  });
 });
