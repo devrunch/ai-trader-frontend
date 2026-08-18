@@ -3,19 +3,40 @@ import { registerDiascriptIndicator } from "diascript/klinecharts";
 
 /**
  * Indicators defined as diascript formulas instead of klinecharts' own
- * built-in catalog — proves the real integration (registration, live
- * recompute on new bars/ticks) works against this app's actual chart, not
- * just diascript's own test suite.
+ * built-in catalog. A data-driven catalog rather than one hand-named export
+ * per indicator — at 40+ entries that stopped scaling.
  *
  * None of these reference series(), session.is_open(), or symbol.exchange()
- * (no cross-timeframe or session-aware logic yet), so a real DataAdapter
- * isn't needed for this first pass — an InMemoryDataAdapter with nothing
- * registered is enough, since it's never actually called.
+ * that need real cross-symbol/session data, so a real DataAdapter isn't
+ * needed — an InMemoryDataAdapter with nothing registered is enough, since
+ * it's never actually called (VWAP uses session.is_open(), which degrades
+ * to `true` without a real getSymbolMeta, per diascript's own design).
  */
 export const noopAdapter = new InMemoryDataAdapter();
 
-export const DIASCRIPT_EMA_20 = "DIA_EMA20";
-export const DIASCRIPT_RSI_14 = "DIA_RSI14";
+export type IndicatorCategory = "Overlays" | "Trend" | "Momentum" | "Volatility" | "Volume";
+
+export interface DiascriptIndicatorDef {
+  /** The klinecharts-facing indicator name, e.g. "DIA_EMA20". */
+  name: string;
+  label: string;
+  category: IndicatorCategory;
+  /** The diascript formula text (may define multiple formulas; only outputName is rendered). */
+  source: string;
+  /** Which wrapped formula in `source` this entry renders. */
+  outputName: string;
+}
+
+export const DIASCRIPT_CATALOG: DiascriptIndicatorDef[] = [
+  {
+    name: "DIA_EMA20", label: "EMA 20 (diascript)", category: "Overlays",
+    source: "ema_line = line(ema(close, 20))", outputName: "ema_line",
+  },
+  {
+    name: "DIA_RSI14", label: "RSI 14 (diascript)", category: "Momentum",
+    source: "rsi_line = line(rsi(close, 14))", outputName: "rsi_line",
+  },
+];
 
 /** Registers every diascript-backed indicator with klinecharts. Idempotent
  * per klinecharts' own registerIndicator (re-registering the same name just
@@ -26,17 +47,12 @@ export function registerDiascriptIndicators(): void {
   if (registered) return;
   registered = true;
 
-  registerDiascriptIndicator(DIASCRIPT_EMA_20, {
-    source: "ema_line = line(ema(close, 20))",
-    outputName: "ema_line",
-    adapter: noopAdapter,
-    symbolTicker: "",
-  });
-
-  registerDiascriptIndicator(DIASCRIPT_RSI_14, {
-    source: "rsi_line = line(rsi(close, 14))",
-    outputName: "rsi_line",
-    adapter: noopAdapter,
-    symbolTicker: "",
-  });
+  for (const def of DIASCRIPT_CATALOG) {
+    registerDiascriptIndicator(def.name, {
+      source: def.source,
+      outputName: def.outputName,
+      adapter: noopAdapter,
+      symbolTicker: "",
+    });
+  }
 }
