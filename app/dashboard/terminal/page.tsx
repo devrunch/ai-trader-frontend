@@ -300,10 +300,14 @@ export default function TerminalPage() {
 
   /* The agent can author brand-new (diascript) indicators at runtime — unlike
      applyChartIndicators above, these aren't in klinecharts' built-in catalog
-     yet, so each one has to be registered before it can be created. Tracked
-     here so the same indicator, mentioned again later in the conversation,
-     is registered once and just re-attached. */
-  const registeredCustomIndicators = useRef(new Set<string>());
+     yet, so each one has to be registered before it can be created. Tracks
+     which names are already ATTACHED to this chart (same shape as
+     CandlestickChart's own appliedRef) — not just registered — so the same
+     indicator, mentioned again later in the conversation, is a no-op the
+     second time. createIndicator has no "already attached" check of its own:
+     it hands back a fresh id/paneId on every call, so calling it twice for
+     the same name silently produces two panes rather than reusing one. */
+  const attachedCustomIndicators = useRef(new Set<string>());
   async function applyCustomIndicators(specs: CustomIndicatorSpec[]) {
     const chart = chartRef.current;
     if (!chart) return;
@@ -314,16 +318,15 @@ export default function TerminalPage() {
     ]);
 
     for (const spec of specs) {
-      if (!registeredCustomIndicators.current.has(spec.name)) {
-        registerDiascriptIndicator(spec.name, {
-          source: spec.source,
-          outputName: spec.outputName,
-          adapter: noopAdapter,
-          symbolTicker: "",
-        });
-        registeredCustomIndicators.current.add(spec.name);
-      }
+      if (attachedCustomIndicators.current.has(spec.name)) continue;
+      registerDiascriptIndicator(spec.name, {
+        source: spec.source,
+        outputName: spec.outputName,
+        adapter: noopAdapter,
+        symbolTicker: "",
+      });
       chart.createIndicator(spec.name, true);
+      attachedCustomIndicators.current.add(spec.name);
     }
   }
 
