@@ -43,6 +43,7 @@ export function streamChat(
     exchange: string;
     message: string;
     history: ChatHistoryItem[];
+    newSession?: boolean;
   },
   handlers: ChatStreamHandlers,
 ): () => void {
@@ -58,7 +59,7 @@ export function streamChat(
 }
 
 async function run(
-  args: { symbol: string; exchange: string; message: string; history: ChatHistoryItem[] },
+  args: { symbol: string; exchange: string; message: string; history: ChatHistoryItem[]; newSession?: boolean },
   handlers: ChatStreamHandlers,
   signal: AbortSignal,
 ): Promise<void> {

@@ -52,13 +52,30 @@ export interface ChatPanelProps {
 export function ChatPanel({
   symbol, exchange, onDrawings, onRemoveDrawings, onIndicators, onCustomIndicator, onUseTrade,
 }: ChatPanelProps) {
+  const resetStorageKey = `chat-reset:${symbol}`;
+  // A reset that happened before this mount (a page reload right after
+  // clicking Reset, before a new message was ever sent) must not have the
+  // old conversation quietly restored back — the backend only starts a
+  // genuinely new session once the NEXT turn is recorded, so without this
+  // the stale turns would still be "latest" and reappear. Read once, at
+  // initial render, rather than in the effect below, which only needs to
+  // decide whether to fetch at all.
+  const wasReset = useCallback(
+    () => typeof window !== "undefined" && Boolean(sessionStorage.getItem(resetStorageKey)),
+    [resetStorageKey],
+  );
+
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<AgentEvent[]>([]);
-  const [restoring, setRestoring] = useState(true);
+  const [restoring, setRestoring] = useState(() => !wasReset());
   const endRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<(() => void) | null>(null);
+  // Set by resetChat(), consumed by the next send() — forces the backend to
+  // start a fresh session instead of appending to whatever conversation this
+  // symbol's turns would otherwise fall into within its 2-hour gap window.
+  const forceNewSessionRef = useRef(false);
 
   /* Restore the last conversation about this symbol. Before this, a reload lost
      everything the user had asked — the history lived only in React state.
@@ -70,6 +87,10 @@ export function ChatPanel({
      for each. */
   useEffect(() => {
     let live = true;
+
+    // restoring already initialized to false for this case (see above) —
+    // nothing to fetch, nothing to set.
+    if (wasReset()) return;
 
     getLatestChatForSymbol(symbol)
       .then((turns) => {
@@ -89,7 +110,20 @@ export function ChatPanel({
     return () => {
       live = false;
     };
-  }, [symbol]);
+  }, [symbol, wasReset]);
+
+  /** Starts a fresh conversation — old turns stop showing here and stop
+   * being sent as context on the next message, and won't quietly come back
+   * on reload either (see the mount effect above). */
+  function resetChat() {
+    cancelRef.current?.();
+    cancelRef.current = null;
+    setMessages([]);
+    setProgress([]);
+    setSending(false);
+    forceNewSessionRef.current = true;
+    if (typeof window !== "undefined") sessionStorage.setItem(resetStorageKey, "1");
+  }
 
   /* An abandoned turn should not keep spending on an answer nobody will see. */
   useEffect(() => () => cancelRef.current?.(), []);
@@ -128,13 +162,19 @@ export function ChatPanel({
     if (!text || sending) return;
 
     const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    const newSession = forceNewSessionRef.current;
+    forceNewSessionRef.current = false;
+    // The guard in the mount effect above is only for reloads BEFORE this
+    // point — once a message actually goes out, a reload should restore
+    // this (now genuinely latest) conversation normally.
+    if (typeof window !== "undefined") sessionStorage.removeItem(resetStorageKey);
     setMessages((m) => [...m, { role: "user", content: text }]);
     setInput("");
     setProgress([]);
     setSending(true);
 
     cancelRef.current = streamChat(
-      { symbol, exchange, message: text, history },
+      { symbol, exchange, message: text, history, newSession },
       {
         onEvent: (event) => setProgress((p) => [...p, event]),
         onResult: (turn) => {
@@ -166,6 +206,17 @@ export function ChatPanel({
   return (
     <div className="flex flex-col min-h-[calc(100vh-9rem)]">
       <div className="flex-1 space-y-3">
+        {!empty && (
+          <div className="flex justify-end -mt-1 mb-1">
+            <button
+              onClick={resetChat}
+              title="Start a new conversation — clears this chat and its context"
+              className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+            >
+              New chat
+            </button>
+          </div>
+        )}
         {empty && (
           <div className="text-center py-6">
             <div className="w-10 h-10 bg-primary/15 flex items-center justify-center mb-3 mx-auto">
