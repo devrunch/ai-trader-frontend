@@ -97,13 +97,19 @@ function fromGenerated(s: ApiGeneratedSignal): DisplaySignal {
 
 
 export default function TerminalPage() {
-  // ?symbol=XYZ lets the Brief hand a candidate straight to the Terminal
+  // ?symbol=XYZ lets the Brief hand a candidate straight to the Terminal --
+  // also the only thing a reload has to recover the user's own last pick
+  // from, so selectSymbol() below keeps this in sync on every change.
   const [activeSymbol, setActiveSymbol]     = useState(() => {
     if (typeof window === "undefined") return "RELIANCE";
     const s = new URLSearchParams(window.location.search).get("symbol");
     return s ? s.toUpperCase() : "RELIANCE";
   });
-  const [activeExchange, setActiveExchange] = useState("NSE");
+  const [activeExchange, setActiveExchange] = useState(() => {
+    if (typeof window === "undefined") return "NSE";
+    const e = new URLSearchParams(window.location.search).get("exchange");
+    return e ? e.toUpperCase() : "NSE";
+  });
   const [period, setPeriod]                 = useState("1D");
   const [bars, setBars]                     = useState<ApiOhlcBar[]>([]);
   const [barsLoading, setBarsLoading]       = useState(true);
@@ -492,10 +498,18 @@ export default function TerminalPage() {
   }
 
   function selectSymbol(sym: string, exchange = "NSE") {
-    setActiveSymbol(sym.toUpperCase());
-    setActiveExchange(exchange.toUpperCase());
+    const symbol = sym.toUpperCase();
+    const exch = exchange.toUpperCase();
+    setActiveSymbol(symbol);
+    setActiveExchange(exch);
     setSearchQuery("");
     setSearchOpen(false);
+    // Keeps the URL in sync so a reload restores this pick instead of
+    // silently falling back to the RELIANCE/NSE default above.
+    const url = new URL(window.location.href);
+    url.searchParams.set("symbol", symbol);
+    url.searchParams.set("exchange", exch);
+    window.history.replaceState(null, "", url);
   }
 
   async function handleAddToWatchlist() {
