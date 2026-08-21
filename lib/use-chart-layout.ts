@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Chart } from "@/components/CandlestickChart";
+import type { ChartAdapter } from "@/lib/chart-adapter/types";
 import {
   ApiError,
   clearChartLayout,
@@ -51,7 +51,7 @@ export function useChartLayout({
 }: {
   symbol: string;
   exchange: string;
-  chartRef: React.RefObject<Chart | null>;
+  chartRef: React.RefObject<ChartAdapter | null>;
   /** Bumped when the chart instance is (re)created, so a restore can wait for it. */
   chartReady: number;
   indicators: string[];
@@ -78,19 +78,10 @@ export function useChartLayout({
         version.current = layout.version;
         setConflict(false);
 
-        for (const drawing of layout.drawings) {
-          try {
-            chart.createOverlay({
-              ...drawing,
-              // Everything restored is locked: these are a record of what was
-              // drawn, and a half-dragged restored line is not something the
-              // user asked for.
-              lock: true,
-            } as Parameters<Chart["createOverlay"]>[0]);
-          } catch {
-            /* An overlay type this build no longer knows about. Skip it. */
-          }
-        }
+        // Locking is the adapter's own concern for a restore (every restored
+        // drawing is a record of what was drawn, never a half-dragged one the
+        // user is still placing) — restoreDrawings applies that consistently.
+        chart.restoreDrawings(layout.drawings);
         if (layout.indicators.length) onRestoreIndicators(layout.indicators);
       })
       // A chart we could not restore is not worth an error banner over the
@@ -112,18 +103,7 @@ export function useChartLayout({
     const chart = chartRef.current;
     if (!chart || restoring.current || conflict) return;
 
-    const drawings: SavedDrawing[] = [];
-    for (const groupId of SAVED_GROUPS) {
-      for (const overlay of chart.getOverlays({ groupId })) {
-        drawings.push({
-          name: overlay.name,
-          points: overlay.points as SavedDrawing["points"],
-          styles: overlay.styles as Record<string, unknown> | undefined,
-          extendData: overlay.extendData,
-          groupId,
-        });
-      }
-    }
+    const drawings: SavedDrawing[] = chart.listSavedDrawings([...SAVED_GROUPS]);
 
     saveChartLayout(symbol, { exchange, drawings, indicators, version: version.current })
       .then((saved) => {

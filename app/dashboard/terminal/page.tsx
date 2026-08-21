@@ -28,7 +28,8 @@ import { PERIODS } from "@/lib/periods";
 import { useChartLayout } from "@/lib/use-chart-layout";
 import { useLiveQuote } from "@/lib/use-live-quote";
 import { useMarketStatus } from "@/lib/market-status";
-import { CandlestickChart, type Chart } from "@/components/CandlestickChart";
+import { CandlestickChart } from "@/components/CandlestickChart";
+import type { ChartAdapter } from "@/lib/chart-adapter/types";
 import { OrderTicket, type OrderPrefill } from "@/components/OrderTicket";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ErrorState } from "@/components/ErrorState";
@@ -175,7 +176,7 @@ export default function TerminalPage() {
 
   const [prefill, setPrefill] = useState<OrderPrefill | null>(null);
 
-  const chartRef = useRef<Chart | null>(null);
+  const chartRef = useRef<ChartAdapter | null>(null);
   const [activeTool, setActiveTool] = useState("cursor");
   /* Bumped when the chart instance is created. The saved layout is restored
      against a real chart — restoring into a null ref draws nothing, silently. */
@@ -200,19 +201,13 @@ export default function TerminalPage() {
 
   function pickTool(t: DrawTool) {
     setActiveTool(t.key);
-    if (t.overlay && chartRef.current) {
-      chartRef.current.createOverlay({
-        name: t.overlay,
-        groupId: "draw",
-        // Saved once the user stops drawing, not on every pixel of the drag.
-        onDrawEnd: () => { layout.scheduleSave(); return false; },
-        onRemoved: () => { layout.scheduleSave(); return false; },
-      });
+    if (t.kind && chartRef.current) {
+      chartRef.current.startManualDraw(t.kind, "draw", () => layout.scheduleSave());
     }
   }
   /** Only what the user drew themselves. The agent's marks are theirs to keep. */
   function clearMyDrawings() {
-    chartRef.current?.removeOverlay({ groupId: "draw" });
+    chartRef.current?.removeDrawingsByGroup("draw");
     setActiveTool("cursor");
     layout.scheduleSave();
   }
@@ -227,11 +222,9 @@ export default function TerminalPage() {
    */
   function resetChart() {
     const chart = chartRef.current;
-    chart?.removeOverlay({ groupId: "draw" });
+    chart?.removeDrawingsByGroup("draw");
     // Every per-turn group, plus the legacy shared one from before turn ids.
-    for (const o of chart?.getOverlays() ?? []) {
-      if (String(o.groupId ?? "").startsWith("ai")) chart?.removeOverlay({ id: o.id });
-    }
+    chart?.removeDrawingsWhere((groupId) => groupId.startsWith("ai"));
     setIndicators(DEFAULT_INDICATORS);
     setActiveTool("cursor");
     // Clearing has to reach the server too, or the next reload brings it back.
@@ -240,7 +233,7 @@ export default function TerminalPage() {
 
   /** Take back exactly what one answer added, leaving the rest alone. */
   function removeTurnDrawings(turnId: string) {
-    chartRef.current?.removeOverlay({ groupId: `ai:${turnId}` });
+    chartRef.current?.removeDrawingsByGroup(`ai:${turnId}`);
     layout.scheduleSave();
   }
 
@@ -253,41 +246,8 @@ export default function TerminalPage() {
    * which is why the chat legend can now remove just its own.
    */
   function applyDrawings(drawings: ChatDrawing[], turnId?: string) {
-    const chart = chartRef.current;
-    if (!chart) return;
     const groupId = turnId ? `ai:${turnId}` : "ai";
-    for (const d of drawings) {
-      try {
-        if (d.kind === "segment" && d.points) {
-          chart.createOverlay({ name: "segment", points: d.points, groupId, lock: true,
-            styles: { line: { color: d.color || "#6c5ce7", size: 2 } } });
-        } else if (d.kind === "priceline" && d.value != null) {
-          chart.createOverlay({ name: "priceLine", points: [{ value: d.value }], groupId, lock: true,
-            styles: { line: { color: d.color || "#8b8a9e", style: "dashed" }, text: { color: "#0b0e14", backgroundColor: d.color || "#8b8a9e" } } });
-        } else if (d.kind === "fibonacci" && d.points) {
-          chart.createOverlay({ name: "fibonacciLine", points: d.points, groupId, lock: true });
-        } else if (d.kind === "series" && d.points) {
-          // "brush" is klinecharts' only built-in overlay that draws a single
-          // continuous line through an arbitrary number of points — `segment`
-          // and friends hard-require exactly 2. This is how any agent-picked
-          // series (SMA, a 5-bar high channel, ...) becomes one chart line.
-          chart.createOverlay({ name: "brush", points: d.points, groupId, lock: true,
-            styles: { line: { color: d.color || "#e0ab4a", size: 2 } } });
-        } else if (d.kind === "trade_marker" && d.timestamp != null && d.value != null) {
-          // Where a backtested strategy actually entered and exited. The
-          // coordinates come from the backtest, computed off real bars — the
-          // model only chose the rules that produced them.
-          chart.createOverlay({
-            name: "simpleAnnotation",
-            points: [{ timestamp: d.timestamp, value: d.value }],
-            groupId,
-            lock: true,
-            extendData: d.side === "BUY" ? "▲" : "▼",
-            styles: { text: { color: d.color || "#8b8a9e", size: 12 } },
-          });
-        }
-      } catch { /* ignore unknown overlay */ }
-    }
+    chartRef.current?.addDrawings(drawings, groupId);
     // What the agent drew is part of the chart the user is looking at, so it is
     // kept with everything else — an explanation that vanishes on reload
     // explains nothing the next morning.
@@ -338,7 +298,7 @@ export default function TerminalPage() {
      truthiness before being counted as attached, matching CandlestickChart's
      own pattern, and each spec gets its own try/catch — one malformed
      formula must not stop the rest of the batch from rendering. */
-  const attachedRef = useRef<{ chart: Chart | null; ids: Map<string, string> }>({ chart: null, ids: new Map() });
+  const attachedRef = useRef<{ chart: ChartAdapter | null; ids: Map<string, string> }>({ chart: null, ids: new Map() });
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart || customIndicatorSpecs.length === 0) return;
@@ -347,28 +307,11 @@ export default function TerminalPage() {
     let cancelled = false;
 
     (async () => {
-      const [{ registerDiascriptIndicator }, { noopAdapter }] = await Promise.all([
-        import("diascript/klinecharts"),
-        import("@/lib/diascript-indicators"),
-      ]);
-      if (cancelled) return;
-
       for (const spec of customIndicatorSpecs) {
         if (attached.has(spec.name)) continue;
         try {
-          registerDiascriptIndicator(spec.name, {
-            source: spec.source,
-            outputName: spec.outputName,
-            adapter: noopAdapter,
-            symbolTicker: "",
-          });
-          // klinecharts only overlays on the price pane when given an
-          // object with paneId: "candle_pane" -- a bare name always gets a
-          // fresh sub-pane, which is why every agent-generated indicator
-          // used to land below the chart regardless of what it actually was.
-          const id = spec.pane === "main"
-            ? chart.createIndicator({ name: spec.name, paneId: "candle_pane" }, true)
-            : chart.createIndicator(spec.name, true);
+          const id = await chart.attachCustomIndicator(spec);
+          if (cancelled) return;
           if (id) {
             attached.set(spec.name, id);
           } else {

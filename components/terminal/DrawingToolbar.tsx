@@ -1,35 +1,36 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ManualDrawKind } from "@/lib/chart-adapter/types";
 
 /**
  * The drawing rail down the left of the chart.
  *
  * The tool list lives here rather than in the page because it is a description
- * of what KLineChart can draw, not of what the terminal does with it — the page
+ * of what the chart can draw, not of what the terminal does with it — the page
  * only needs to know which tool was picked.
  */
 
 export interface DrawTool {
   key: string;
   title: string;
-  /** KLineChart overlay name, or null for the cursor (which draws nothing). */
-  overlay: string | null;
+  /** Library-agnostic draw kind, or null for the cursor (which draws nothing). */
+  kind: ManualDrawKind | null;
   icon: React.ReactNode;
 }
 
 export const DRAW_TOOLS: DrawTool[] = [
-  { key: "cursor", title: "Cursor", overlay: null,
+  { key: "cursor", title: "Cursor", kind: null,
     icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M4 2l16 8-7 2-2 7z"/></svg> },
-  { key: "trendline", title: "Trend line", overlay: "segment",
+  { key: "trendline", title: "Trend line", kind: "trendline",
     icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="4" y1="20" x2="20" y2="4"/></svg> },
-  { key: "ray", title: "Ray", overlay: "rayLine",
+  { key: "ray", title: "Ray", kind: "ray",
     icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="5" cy="19" r="1.6" fill="currentColor"/><line x1="6" y1="18" x2="20" y2="4"/></svg> },
-  { key: "hline", title: "Horizontal line", overlay: "horizontalStraightLine",
+  { key: "hline", title: "Horizontal line", kind: "hline",
     icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="3" y1="12" x2="21" y2="12"/></svg> },
-  { key: "fib", title: "Fibonacci retracement", overlay: "fibonacciLine",
+  { key: "fib", title: "Fibonacci retracement", kind: "fib",
     icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><line x1="3" y1="5" x2="21" y2="5"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="3" y1="20" x2="21" y2="20"/></svg> },
-  { key: "rect", title: "Rectangle", overlay: "rect",
+  { key: "rect", title: "Rectangle", kind: "rect",
     icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="4" y="6" width="16" height="12" rx="1"/></svg> },
 ];
 
