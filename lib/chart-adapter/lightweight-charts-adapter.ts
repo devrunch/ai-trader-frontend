@@ -350,9 +350,11 @@ export class LightweightChartsAdapter implements ChartAdapter {
     // like SMA and EMA were visually identical on the chart despite the
     // legend showing them in different colors. This is what the legend's
     // own swatch colors are drawn from too (see palette.ts) -- one shared
-    // source, not two independently-coincidental palettes.
-    const color = INDICATOR_COLORS[this.pineSeries.size % INDICATOR_COLORS.length];
-    const series = attachPinePlotsToPane(this.chart, paneIndex, result.plots, priceScaleId, color);
+    // source, not two independently-coincidental palettes. An indicator with
+    // several of its own lines (MACD's MACD/Signal) cycles forward from this
+    // starting index, one shared palette rather than shades of one hue.
+    const colorIndex = this.pineSeries.size % INDICATOR_COLORS.length;
+    const series = attachPinePlotsToPane(this.chart, paneIndex, result.plots, priceScaleId, colorIndex);
     if (priceScaleId) this.chart.priceScale(priceScaleId).applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     this.pineSeries.set(spec.id, series);
     return spec.id;
