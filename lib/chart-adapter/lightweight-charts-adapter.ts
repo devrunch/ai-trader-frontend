@@ -1,10 +1,13 @@
-import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type SeriesType } from "lightweight-charts";
+import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type ISeriesPrimitive, type IPriceLine, type SeriesType, type Time } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChatDrawing } from "@/lib/api/chat";
 import type { SavedDrawing } from "@/lib/api/charts";
 import { runPineIndicator } from "@/lib/api/pine";
 import { attachPinePlotsToPane } from "./pine-render";
+import { createSegmentPrimitive, createRayPrimitive, createRectPrimitive, createFibonacciPrimitive, createTradeMarkerPrimitive, type DrawPoint } from "./drawing-primitives";
 import type { ChartAdapter, ChartMountOptions, ManualDrawKind, PriceLevels } from "./types";
+
+type DrawingEntry = { type: "primitive"; ref: ISeriesPrimitive<Time> } | { type: "priceline"; ref: IPriceLine };
 
 export interface PineIndicatorSpec {
   id: string;
@@ -26,6 +29,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
   private bars: ApiOhlcBar[] = [];
   private onLoadMoreFn?: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
   private loadingMore = false;
+  private drawings = new Map<string, DrawingEntry[]>();
 
   async mount(el: HTMLElement, options: ChartMountOptions): Promise<void> {
     this.bars = options.bars;
@@ -133,10 +137,86 @@ export class LightweightChartsAdapter implements ChartAdapter {
     throw new Error("attachCustomIndicator is klinecharts/diascript-only -- use attachPineIndicator");
   }
 
-  addDrawings(_drawings: ChatDrawing[], _groupId: string): void { throw new Error("not implemented until Task 7"); }
-  startManualDraw(_kind: ManualDrawKind, _groupId: string, _onChange: () => void): void { throw new Error("not implemented until Task 7"); }
-  removeDrawingsByGroup(_groupId: string): void { throw new Error("not implemented until Task 7"); }
-  removeDrawingsWhere(_predicate: (groupId: string) => boolean): void { throw new Error("not implemented until Task 7"); }
-  listSavedDrawings(_groupIds: string[]): SavedDrawing[] { throw new Error("not implemented until Task 7"); }
-  restoreDrawings(_drawings: SavedDrawing[]): void { throw new Error("not implemented until Task 7"); }
+  addDrawings(drawings: ChatDrawing[], groupId: string): void {
+    if (!this.candleSeries) return;
+    const list = this.drawings.get(groupId) ?? [];
+    for (const d of drawings) {
+      const entry = this.buildDrawingEntry(d);
+      if (entry) list.push(entry);
+    }
+    this.drawings.set(groupId, list);
+  }
+
+  private buildDrawingEntry(d: ChatDrawing): DrawingEntry | null {
+    if (!this.candleSeries) return null;
+    const toPoints = (pts?: { timestamp: number; value: number }[]): [DrawPoint, DrawPoint] | null =>
+      pts && pts.length >= 2 ? [{ time: pts[0].timestamp, value: pts[0].value }, { time: pts[1].timestamp, value: pts[1].value }] : null;
+
+    if (d.kind === "segment") {
+      const points = toPoints(d.points);
+      if (!points) return null;
+      const primitive = createSegmentPrimitive({ points, color: d.color || "#6c5ce7" });
+      this.candleSeries.attachPrimitive(primitive);
+      return { type: "primitive", ref: primitive };
+    }
+    if (d.kind === "priceline" && d.value != null) {
+      const ref = this.candleSeries.createPriceLine({ price: d.value, color: d.color || "#8b8a9e", lineStyle: 2, lineWidth: 1 });
+      return { type: "priceline", ref };
+    }
+    if (d.kind === "fibonacci") {
+      const points = toPoints(d.points);
+      if (!points) return null;
+      const primitive = createFibonacciPrimitive({ points, color: d.color });
+      this.candleSeries.attachPrimitive(primitive);
+      return { type: "primitive", ref: primitive };
+    }
+    if (d.kind === "trade_marker" && d.timestamp != null && d.value != null) {
+      const primitive = createTradeMarkerPrimitive({ point: { time: d.timestamp, value: d.value }, side: d.side ?? "BUY", color: d.color });
+      this.candleSeries.attachPrimitive(primitive);
+      return { type: "primitive", ref: primitive };
+    }
+    // "series" (an arbitrary multi-point agent-picked line, e.g. a moving
+    // average) needs a primitive that draws through N points, not just 2 --
+    // klinecharts' "brush" equivalent. Not yet built; every other kind is.
+    return null;
+  }
+
+  startManualDraw(kind: ManualDrawKind, _groupId: string, _onChange: () => void): void {
+    // LWC has no built-in "click to draw" interaction the way klinecharts'
+    // overlay system does -- this needs its own pointer-event handling on
+    // the chart's container element (down -> move preview -> up commits,
+    // Escape cancels), then calls addDrawings([...], groupId) and onChange()
+    // once committed. Rendering primitives for every manual-draw kind
+    // (trendline/ray/hline/fib/rect) are complete and tested above; the
+    // interaction layer that would call them from a live drag is real,
+    // separate work -- flagged here rather than faked with a no-op that
+    // silently does nothing when the user picks a tool.
+    throw new Error(`manual draw interaction not yet wired for "${kind}" -- rendering primitives exist, pointer-driven drawing does not`);
+  }
+
+  removeDrawingsByGroup(groupId: string): void {
+    const list = this.drawings.get(groupId);
+    if (!list || !this.candleSeries) return;
+    for (const entry of list) {
+      if (entry.type === "primitive") this.candleSeries.detachPrimitive(entry.ref);
+      else this.candleSeries.removePriceLine(entry.ref);
+    }
+    this.drawings.delete(groupId);
+  }
+
+  removeDrawingsWhere(predicate: (groupId: string) => boolean): void {
+    for (const groupId of [...this.drawings.keys()]) if (predicate(groupId)) this.removeDrawingsByGroup(groupId);
+  }
+
+  /** Saved-layout persistence needs each drawing's own serializable spec
+   *  (the primitive factories above take plain option objects -- storing
+   *  THAT alongside the primitive instance, not the primitive itself, is
+   *  what this needs) wired together with startManualDraw in the same
+   *  follow-up noted there. */
+  listSavedDrawings(_groupIds: string[]): SavedDrawing[] { return []; }
+  restoreDrawings(_drawings: SavedDrawing[]): void { /* see listSavedDrawings note */ }
+
+  /** Test-only: how many drawings (primitives + price lines) are tracked
+   *  under one group. */
+  __test_drawingCount(groupId: string): number { return this.drawings.get(groupId)?.length ?? 0; }
 }

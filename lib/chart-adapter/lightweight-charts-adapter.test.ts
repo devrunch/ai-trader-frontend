@@ -82,4 +82,47 @@ describe("LightweightChartsAdapter", () => {
     expect(adapter.__test_lastBar().high).toBe(103); // extended, since 103 > original high of 101
     adapter.dispose();
   });
+
+  it("addDrawings attaches one primitive per drawing, grouped, and removeDrawingsByGroup removes exactly that group", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      { time: 1767000960, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1200 },
+    ] });
+
+    adapter.addDrawings([
+      { kind: "segment", points: [{ timestamp: 1767000900, value: 100 }, { timestamp: 1767000960, value: 102 }] },
+    ], "ai:turn1");
+    adapter.addDrawings([
+      { kind: "trade_marker", timestamp: 1767000900, value: 100, side: "BUY" },
+    ], "draw");
+
+    expect(adapter.__test_drawingCount("ai:turn1")).toBe(1);
+    expect(adapter.__test_drawingCount("draw")).toBe(1);
+
+    adapter.removeDrawingsByGroup("ai:turn1");
+    expect(adapter.__test_drawingCount("ai:turn1")).toBe(0);
+    expect(adapter.__test_drawingCount("draw")).toBe(1); // the other group is untouched
+    adapter.dispose();
+  });
+
+  it("removeDrawingsWhere removes every group matching the predicate", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [{ time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }] });
+
+    adapter.addDrawings([{ kind: "priceline", value: 100 }], "ai:turn1");
+    adapter.addDrawings([{ kind: "priceline", value: 105 }], "ai:turn2");
+    adapter.addDrawings([{ kind: "priceline", value: 95 }], "draw");
+
+    adapter.removeDrawingsWhere((groupId) => groupId.startsWith("ai"));
+
+    expect(adapter.__test_drawingCount("ai:turn1")).toBe(0);
+    expect(adapter.__test_drawingCount("ai:turn2")).toBe(0);
+    expect(adapter.__test_drawingCount("draw")).toBe(1);
+    adapter.dispose();
+  });
 });
