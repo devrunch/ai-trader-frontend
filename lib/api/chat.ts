@@ -24,14 +24,12 @@ export interface ChatSimulationResult {
   profit_at_target: number; loss_at_stop: number; reward_risk: number; capital_required: number;
 }
 export interface CustomIndicatorSpec {
-  name: string;
+  id: string;
   source: string;
-  outputName: string;
-  displayLabel: string;
+  label: string;
   /** Which pane this renders in — the writer LLM decides this (it already
    * knows "Gaussian filter" overlays price and "RSI-style" doesn't), since
-   * klinecharts needs an explicit paneId to overlay on the price pane and
-   * otherwise always creates a fresh sub-pane. */
+   * the chart needs an explicit pane to overlay on price vs. get its own. */
   pane: "main" | "sub";
 }
 export interface ChatResults {
@@ -39,7 +37,7 @@ export interface ChatResults {
   simulation?: ChatSimulationResult;
   /** Agent asked to toggle indicators on the chart */
   chart_indicators?: { add: string[]; remove: string[] };
-  /** Agent authored one or more custom (diascript) indicators */
+  /** Agent authored one or more custom Pine indicators */
   custom_indicators?: CustomIndicatorSpec[];
 }
 export interface ChatResponse {

@@ -315,9 +315,10 @@ export default function TerminalPage() {
     // Intentionally does nothing -- see comment above.
   }
 
-  /* The agent can author brand-new (diascript) indicators at runtime — unlike
-     applyChartIndicators above, these aren't in klinecharts' built-in catalog
-     yet, so each one has to be registered before it can be attached.
+  /* The agent can author brand-new Pine indicators at runtime — unlike
+     applyChartIndicators above (a stale, built-in-catalog-only tool), these
+     have no catalog to be in at all under the Pine model; each is attached
+     individually by its own source.
 
      The specs themselves live in state, not just a ref: CandlestickChart's
      chart-init effect disposes and recreates the chart instance on an
@@ -330,9 +331,9 @@ export default function TerminalPage() {
   const [customIndicatorSpecs, setCustomIndicatorSpecs] = useState<CustomIndicatorSpec[]>([]);
   function applyCustomIndicators(specs: CustomIndicatorSpec[]) {
     setCustomIndicatorSpecs(prev => {
-      const byName = new Map(prev.map(s => [s.name, s] as const));
-      for (const spec of specs) byName.set(spec.name, spec);
-      return Array.from(byName.values());
+      const byId = new Map(prev.map(s => [s.id, s] as const));
+      for (const spec of specs) byId.set(spec.id, spec);
+      return Array.from(byId.values());
     });
   }
 
@@ -359,17 +360,17 @@ export default function TerminalPage() {
 
     (async () => {
       for (const spec of customIndicatorSpecs) {
-        if (attached.has(spec.name)) continue;
+        if (attached.has(spec.id)) continue;
         try {
-          const id = await chart.attachCustomIndicator(spec);
+          const id = await chart.attachPineIndicator(spec);
           if (cancelled) return;
           if (id) {
-            attached.set(spec.name, id);
+            attached.set(spec.id, id);
           } else {
-            console.warn(`Custom indicator "${spec.name}" did not attach to the chart`);
+            console.warn(`Custom indicator "${spec.label}" did not attach to the chart`);
           }
         } catch (err) {
-          console.error(`Failed to render custom indicator "${spec.name}"`, err);
+          console.error(`Failed to render custom indicator "${spec.label}"`, err);
         }
       }
     })();
