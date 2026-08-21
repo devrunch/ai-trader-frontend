@@ -2,8 +2,18 @@
 import { describe, it, expect, vi } from "vitest";
 import { LightweightChartsAdapter } from "./lightweight-charts-adapter";
 
+// Real shape: {time (ms), value} points, not raw numbers -- matches what
+// the actual sandbox returns (see app/pine_sandbox/worker.mjs).
 vi.mock("@/lib/api/pine", () => ({
-  runPineIndicator: vi.fn().mockResolvedValue({ ok: true, plots: { "SMA5": [100, 101, 102] }, error: null }),
+  runPineIndicator: vi.fn().mockResolvedValue({
+    ok: true,
+    plots: { "SMA5": [
+      { time: 1767000900000, value: 100 },
+      { time: 1767000960000, value: 101 },
+      { time: 1767001020000, value: 102 },
+    ] },
+    error: null,
+  }),
 }));
 
 describe("LightweightChartsAdapter", () => {

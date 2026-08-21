@@ -88,10 +88,10 @@ export class LightweightChartsAdapter implements ChartAdapter {
   seriesCount(): number { return (this.candleSeries ? 1 : 0) + (this.volumeSeries ? 1 : 0) + [...this.pineSeries.values()].reduce((n, s) => n + s.length, 0); }
 
   async attachPineIndicator(spec: PineIndicatorSpec): Promise<string> {
-    const result = await runPineIndicator(spec.source, this.bars.map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume ?? 0 })));
+    const result = await runPineIndicator(spec.source, this.bars);
     if (!result.ok || !result.plots || !this.chart) return spec.id;
     const paneIndex = spec.pane === "main" ? 0 : this.chart.panes().length; // new sub-pane per non-main indicator
-    const series = attachPinePlotsToPane(this.chart, paneIndex, result.plots, this.bars.map(b => b.time));
+    const series = attachPinePlotsToPane(this.chart, paneIndex, result.plots);
     this.pineSeries.set(spec.id, series);
     return spec.id;
   }
