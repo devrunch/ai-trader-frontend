@@ -7,6 +7,7 @@ import {
   clearChartLayout,
   getChartLayout,
   saveChartLayout,
+  type AttachedIndicator,
   type SavedDrawing,
 } from "./api";
 
@@ -54,8 +55,8 @@ export function useChartLayout({
   chartRef: React.RefObject<ChartAdapter | null>;
   /** Bumped when the chart instance is (re)created, so a restore can wait for it. */
   chartReady: number;
-  indicators: string[];
-  onRestoreIndicators: (names: string[]) => void;
+  indicators: AttachedIndicator[];
+  onRestoreIndicators: (indicators: AttachedIndicator[]) => void;
 }): ChartLayoutState {
   const [conflict, setConflict] = useState(false);
   const version = useRef(0);
@@ -125,7 +126,7 @@ export function useChartLayout({
     if (restoring.current) return;
     scheduleSave();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.join(",")]);
+  }, [indicators.map((i) => i.id).join(",")]);
 
   /* A pending save must not fire after the user has navigated away. */
   useEffect(() => () => {

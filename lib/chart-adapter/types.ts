@@ -16,6 +16,16 @@ export interface PriceLevels {
   stopLoss?: number;
 }
 
+/** A Pine-authored indicator, attached by source rather than a catalog
+ *  name -- there is no catalog under the PineTS model. `id` is stable
+ *  across saves/restores, chosen by the caller. */
+export interface PineIndicatorSpec {
+  id: string;
+  source: string;
+  label: string;
+  pane: "main" | "sub";
+}
+
 /**
  * Everything a chart consumer needs, with zero library-specific types
  * crossing the boundary. Implemented today by KlinechartsAdapter (this
@@ -30,11 +40,19 @@ export interface ChartAdapter {
   setPriceLevels(levels: PriceLevels): void;
   pushLiveTick(price: number): void;
 
+  /** klinecharts-only: attach/detach by fixed built-in name (EMA, MACD, ...).
+   *  A no-op under the Pine model (LightweightChartsAdapter) -- there is no
+   *  fixed catalog to name against once Pine is the only indicator engine. */
   setIndicators(names: string[]): void;
-  /** An agent-authored diascript formula, registered and attached by name —
-   *  distinct from setIndicators' fixed built-in names. Returns the instance
-   *  id (for the caller's own attached-tracking) or null if attach failed. */
+  /** klinecharts/diascript-only: an agent-authored diascript formula,
+   *  registered and attached by name. Superseded by attachPineIndicator
+   *  once Task 9 rewrites the chat agent to write Pine instead of diascript. */
   attachCustomIndicator(spec: { name: string; source: string; outputName: string; pane: "main" | "sub" }): Promise<string | null>;
+
+  /** Pine-only: attach/remove one indicator by source. The individual-attach
+   *  equivalent of setIndicators under the model with no fixed catalog. */
+  attachPineIndicator(spec: PineIndicatorSpec): Promise<string>;
+  removeIndicator(id: string): void;
 
   addDrawings(drawings: ChatDrawing[], groupId: string): void;
   startManualDraw(kind: ManualDrawKind, groupId: string, onChange: () => void): void;

@@ -5,16 +5,11 @@ import type { SavedDrawing } from "@/lib/api/charts";
 import { runPineIndicator } from "@/lib/api/pine";
 import { attachPinePlotsToPane } from "./pine-render";
 import { createSegmentPrimitive, createRayPrimitive, createRectPrimitive, createFibonacciPrimitive, createTradeMarkerPrimitive, type DrawPoint } from "./drawing-primitives";
-import type { ChartAdapter, ChartMountOptions, ManualDrawKind, PriceLevels } from "./types";
+import type { ChartAdapter, ChartMountOptions, ManualDrawKind, PineIndicatorSpec, PriceLevels } from "./types";
+
+export type { PineIndicatorSpec };
 
 type DrawingEntry = { type: "primitive"; ref: ISeriesPrimitive<Time> } | { type: "priceline"; ref: IPriceLine };
-
-export interface PineIndicatorSpec {
-  id: string;
-  source: string;
-  label: string;
-  pane: "main" | "sub";
-}
 
 /** ChartAdapter implementation on Lightweight Charts. Default view is
  * candle + volume only (both native LWC series, no calc engine needed) --

@@ -2,10 +2,8 @@
 
 import { useRef, useEffect, useState } from "react";
 import type { ChartAdapter } from "@/lib/chart-adapter/types";
-import { KlinechartsAdapter } from "@/lib/chart-adapter/klinecharts-adapter";
+import { LightweightChartsAdapter } from "@/lib/chart-adapter/lightweight-charts-adapter";
 import type { ApiOhlcBar } from "@/lib/api";
-
-const C = { ema20: "#6c5ce7", ema50: "#e0ab4a" };
 
 export type ChartSignal = {
   direction: "BUY" | "SELL" | "HOLD";
@@ -15,19 +13,21 @@ export type ChartSignal = {
   stopLoss: number;
 };
 
-/** Candlestick chart, rendered through a ChartAdapter (currently
- * KlinechartsAdapter — see lib/chart-adapter/). This component owns only the
- * React lifecycle (mount/unmount, prop-driven effects); every chart-library
- * call lives in the adapter, never here.
+/** Candlestick chart, rendered through a ChartAdapter (LightweightChartsAdapter
+ * — see lib/chart-adapter/). This component owns only the React lifecycle
+ * (mount/unmount, prop-driven effects); every chart-library call lives in the
+ * adapter, never here. Default view is candle + volume only; anything else
+ * attaches via ChartAdapter.attachPineIndicator, driven by the parent
+ * (terminal/page.tsx owns that diffing) rather than an `indicators` prop
+ * here, since there is no fixed catalog to pass names against anymore.
  * Pass `fill` to make it grow to its parent's height (terminal), or `height`
  * for a fixed size (landing demo). `onReady` hands the adapter instance to
  * the parent so a drawing-tools rail / AI agent can draw on it. */
-export function CandlestickChart({ bars, signal, height = 320, fill = false, indicators = ["EMA", "VOL"], livePrice, onReady, onLoadMore }: {
+export function CandlestickChart({ bars, signal, height = 320, fill = false, livePrice, onReady, onLoadMore }: {
   bars: ApiOhlcBar[];
   signal: ChartSignal | null;
   height?: number;
   fill?: boolean;
-  indicators?: string[];
   livePrice?: number;
   onReady?: (adapter: ChartAdapter) => void;
   /** Older bars than the oldest currently on the chart, for when the user
@@ -38,11 +38,6 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
   const containerRef = useRef<HTMLDivElement>(null);
   const adapterRef = useRef<ChartAdapter | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  /* Adapter mount is async (the chart library is dynamically imported to keep
-     it out of SSR), so the indicator effect below would run against a null
-     ref on first mount and silently apply nothing. This flips once the
-     instance exists and re-triggers it. */
-  const [chartReady, setChartReady] = useState(0);
   // Latest-callback refs so the mount effect never re-runs (and so never
   // tears down the chart, losing zoom and every drawing) just because the
   // parent passed a new function identity. Assigned in an effect rather than
@@ -57,7 +52,7 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
     if (!containerRef.current || bars.length === 0) return;
     const el = containerRef.current;
     let cancelled = false;
-    const adapter = new KlinechartsAdapter();
+    const adapter = new LightweightChartsAdapter();
 
     adapter.mount(el, { bars, onLoadMore: (ts) => onLoadMoreRef.current?.(ts) ?? Promise.resolve([]) }).then(() => {
       if (cancelled) { adapter.dispose(); return; }
@@ -67,7 +62,6 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
       ro.observe(el);
       resizeObserverRef.current = ro;
       onReadyRef.current?.(adapter);
-      setChartReady(n => n + 1);
     });
 
     return () => {
@@ -77,20 +71,7 @@ export function CandlestickChart({ bars, signal, height = 320, fill = false, ind
       adapterRef.current?.dispose();
       adapterRef.current = null;
     };
-  // `indicators` is deliberately NOT a dependency — see the effect below.
   }, [bars, signal, height, fill]);
-
-  /**
-   * Apply indicator changes INCREMENTALLY to the existing chart.
-   *
-   * `chartReady` (not `bars`) is the dependency: it ticks whenever the mount
-   * effect has produced a NEW adapter instance, which is exactly when the
-   * indicators need re-applying. Keying off `bars` instead would re-run this
-   * on every price refresh, before the new instance necessarily exists.
-   */
-  useEffect(() => {
-    adapterRef.current?.setIndicators(indicators);
-  }, [indicators, chartReady]);
 
   // Live tick — update the forming candle in place when the quote moves.
   useEffect(() => {
@@ -120,8 +101,6 @@ export function ChartLegend({ signal }: { signal: ChartSignal | null }) {
   const isSell = signal.direction === "SELL";
   return (
     <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap mt-2">
-      <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 rounded" style={{ background: C.ema20 }} /> EMA20</span>
-      <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 rounded" style={{ background: C.ema50 }} /> EMA50</span>
       <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t border-dashed border-muted-foreground" /> Entry ₹{signal.entryPrice}</span>
       <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: "var(--buy)" }} /> Target ₹{signal.targetPrice}</span>
       <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: "var(--sell)" }} /> Stop ₹{signal.stopLoss}</span>

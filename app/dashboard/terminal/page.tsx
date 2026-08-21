@@ -34,15 +34,28 @@ import { OrderTicket, type OrderPrefill } from "@/components/OrderTicket";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ErrorState } from "@/components/ErrorState";
 import { DrawingToolbar, type DrawTool } from "@/components/terminal/DrawingToolbar";
-import { IndicatorSearchModal } from "@/components/terminal/IndicatorSearchModal";
 import { SignalPanel, type DisplaySignal } from "@/components/terminal/SignalPanel";
 import { PositionsPanel } from "@/components/terminal/PositionsPanel";
 import { Disclaimer } from "@/components/Disclaimer";
+import type { AttachedIndicator } from "@/lib/api/charts";
 
 const MAX_WATCHLIST_SIZE = 15;
 
-/** What a chart shows before anyone touches it, and what Reset returns it to. */
-const DEFAULT_INDICATORS = ["EMA", "VOL"];
+/**
+ * What a chart shows before anyone touches it, and what Reset returns it to:
+ * candle + volume only, both native series under the LWC adapter -- no
+ * attached indicator needed for either.
+ *
+ * IndicatorSearchModal/IndicatorMenu (removed from this page) were built
+ * entirely around the retired klinecharts/diascript catalog -- there is no
+ * catalog to search under the Pine model, and keeping that UI wired to a
+ * now-no-op setIndicators would show working-looking controls that
+ * silently did nothing when clicked. A real replacement (paste-a-Pine-
+ * script, or a genuine indicator library once one exists) is separate,
+ * unscoped UI work, not attempted here. For now indicators attach only via
+ * the chat agent (Task 9) or programmatically.
+ */
+const DEFAULT_INDICATORS: AttachedIndicator[] = [];
 
 /** Exchanges the search box can jump to directly. */
 const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE"] as const;
@@ -182,7 +195,28 @@ export default function TerminalPage() {
      against a real chart — restoring into a null ref draws nothing, silently. */
   const [chartReady, setChartReady] = useState(0);
 
-  const [indicators, setIndicators] = useState<string[]>(DEFAULT_INDICATORS);
+  const [indicators, setIndicators] = useState<AttachedIndicator[]>(DEFAULT_INDICATORS);
+  /* setIndicators here only updates the app's own record of what SHOULD be
+     attached (and is what gets saved/restored) -- it does not itself touch
+     the chart. Actually attaching/removing is this effect's job, diffed
+     against the adapter (there is no bulk "set these" call under the Pine
+     model, unlike the old klinecharts name-list). */
+  const attachedPineRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const attached = attachedPineRef.current;
+    const wantedIds = new Set(indicators.map((i) => i.id));
+    for (const id of [...attached]) {
+      if (wantedIds.has(id)) continue;
+      chart.removeIndicator(id);
+      attached.delete(id);
+    }
+    for (const spec of indicators) {
+      if (attached.has(spec.id)) continue;
+      chart.attachPineIndicator(spec).then(() => attached.add(spec.id));
+    }
+  }, [indicators, chartReady]);
 
   const [rightTab, setRightTab] = useState<"signal" | "trade" | "positions" | "chat">("signal");
   const [positions, setPositions] = useState<ApiPosition[]>([]);
@@ -202,7 +236,16 @@ export default function TerminalPage() {
   function pickTool(t: DrawTool) {
     setActiveTool(t.key);
     if (t.kind && chartRef.current) {
-      chartRef.current.startManualDraw(t.kind, "draw", () => layout.scheduleSave());
+      try {
+        chartRef.current.startManualDraw(t.kind, "draw", () => layout.scheduleSave());
+      } catch (err) {
+        // Known gap under the LWC adapter (see lightweight-charts-adapter.ts's
+        // own comment): the drawing primitives render, but pointer-driven
+        // interaction to actually place one isn't wired yet. Fails loud in
+        // the console, not to the user as a crashed page.
+        console.warn(`Manual "${t.kind}" drawing is not yet available:`, err);
+        setActiveTool("cursor");
+      }
     }
   }
   /** Only what the user drew themselves. The agent's marks are theirs to keep. */
@@ -254,14 +297,22 @@ export default function TerminalPage() {
     if (drawings.length) layout.scheduleSave();
   }
 
-  /* The agent can toggle chart indicators as part of an answer. */
-  function applyChartIndicators(change: { add?: string[]; remove?: string[] }) {
-    setIndicators(list => {
-      const next = new Set(list);
-      (change.add ?? []).forEach(n => next.add(n));
-      (change.remove ?? []).forEach(n => next.delete(n));
-      return [...next];
-    });
+  /**
+   * The agent's `chart_indicators` tool result -- add/remove BUILT-IN
+   * catalog names (e.g. "EMA"). Same root problem as the removed
+   * IndicatorSearchModal: this tool contract (ai-trader-signals'
+   * add_chart_indicator) is built around the retired klinecharts/diascript
+   * catalog and has no Pine equivalent yet. Task 9 rewrites
+   * generate_custom_indicator (the agent's Pine-AUTHORING tool) but not
+   * this one -- a separate, unscoped follow-up: either retire this tool
+   * server-side in favor of generate_custom_indicator entirely, or give it
+   * a real Pine-source-producing replacement. Left a documented no-op
+   * rather than fabricating fake AttachedIndicator objects from bare
+   * catalog names, which would silently "succeed" while attaching nothing
+   * real.
+   */
+  function applyChartIndicators(_change: { add?: string[]; remove?: string[] }) {
+    // Intentionally does nothing -- see comment above.
   }
 
   /* The agent can author brand-new (diascript) indicators at runtime — unlike
@@ -325,10 +376,6 @@ export default function TerminalPage() {
 
     return () => { cancelled = true; };
   }, [customIndicatorSpecs, chartReady]);
-
-  function toggleIndicator(name: string) {
-    setIndicators(list => list.includes(name) ? list.filter(x => x !== name) : [...list, name]);
-  }
 
   /* Watchlist — fetched on mount, drives the search suggestions.
      Every setState sits in a promise callback: a synchronous one inside an
@@ -649,7 +696,7 @@ export default function TerminalPage() {
 
         <div className="flex-1" />
 
-        <IndicatorSearchModal active={indicators} onToggle={toggleIndicator} />
+        {/* Indicator picker removed here -- see DEFAULT_INDICATORS' comment above. */}
 
         <div className="w-px h-5 bg-border mx-1 hidden lg:block" />
 
@@ -729,7 +776,7 @@ export default function TerminalPage() {
               <p className="text-xs text-muted-foreground mt-1">Try another symbol, or check the exchange.</p>
             </div>
           ) : (
-            <CandlestickChart fill bars={bars} signal={displaySignal} indicators={indicators} livePrice={quote?.ltp}
+            <CandlestickChart fill bars={bars} signal={displaySignal} livePrice={quote?.ltp}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
               onLoadMore={handleLoadMore} />
           )}

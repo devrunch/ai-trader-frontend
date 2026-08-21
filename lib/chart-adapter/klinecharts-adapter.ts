@@ -191,6 +191,24 @@ export class KlinechartsAdapter implements ChartAdapter {
     }
   }
 
+  async attachPineIndicator(): Promise<string> {
+    // Pine-only -- KlinechartsAdapter still renders via diascript
+    // (attachCustomIndicator below) until Task 9 rewrites the chat agent
+    // to write Pine and this adapter is retired alongside diascript.
+    throw new Error("attachPineIndicator is not available on KlinechartsAdapter -- use attachCustomIndicator");
+  }
+
+  removeIndicator(id: string): void {
+    // Shared name with the built-in-indicator id space (setIndicators'
+    // `applied` map) and the diascript custom-indicator one -- both are
+    // klinecharts instance ids from the same createIndicator() call, so one
+    // removal path covers both without needing to know which produced it.
+    const chart = this.chart;
+    if (!chart) return;
+    chart.removeIndicator({ id });
+    for (const [name, appliedId] of [...this.applied]) if (appliedId === id) this.applied.delete(name);
+  }
+
   async attachCustomIndicator(spec: { name: string; source: string; outputName: string; pane: "main" | "sub" }): Promise<string | null> {
     const chart = this.chart;
     if (!chart) return null;
