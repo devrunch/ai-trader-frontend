@@ -24,9 +24,12 @@ export class LightweightChartsAdapter implements ChartAdapter {
   private volumeSeries: ISeriesApi<"Histogram"> | null = null;
   private pineSeries = new Map<string, ISeriesApi<SeriesType>[]>();
   private bars: ApiOhlcBar[] = [];
+  private onLoadMoreFn?: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
+  private loadingMore = false;
 
   async mount(el: HTMLElement, options: ChartMountOptions): Promise<void> {
     this.bars = options.bars;
+    this.onLoadMoreFn = options.onLoadMore;
     const chart = createChart(el, {
       layout: { background: { color: "#0b0e14" }, textColor: "#8b8a9e", attributionLogo: false },
       grid: { horzLines: { color: "#1a1e28" }, vertLines: { color: "#1a1e28" } },
@@ -38,6 +41,39 @@ export class LightweightChartsAdapter implements ChartAdapter {
 
     this.volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "" }, 1);
     this.volumeSeries.setData(options.bars.map(b => ({ time: b.time as never, value: b.volume ?? 0, color: b.close >= b.open ? "#16c78466" : "#f0525d66" })));
+
+    // Pans back past the loaded range -> pull more history. Mirrors
+    // klinecharts' own `forward: true` DataLoader contract from
+    // KlinechartsAdapter, just against LWC's own range-change event instead.
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (!range || range.from > 5 || this.loadingMore || !this.onLoadMoreFn || this.bars.length === 0) return;
+      void this.loadMore();
+    });
+  }
+
+  private async loadMore(): Promise<void> {
+    if (!this.onLoadMoreFn || this.bars.length === 0) return;
+    this.loadingMore = true;
+    try {
+      const older = await this.onLoadMoreFn(this.bars[0].time);
+      if (older.length === 0) return;
+      this.bars = [...older, ...this.bars];
+      this.candleSeries!.setData(this.bars.map(b => ({ time: b.time as never, open: b.open, high: b.high, low: b.low, close: b.close })));
+      this.volumeSeries!.setData(this.bars.map(b => ({ time: b.time as never, value: b.volume ?? 0, color: b.close >= b.open ? "#16c78466" : "#f0525d66" })));
+    } finally {
+      this.loadingMore = false;
+    }
+  }
+
+  /** Test-only: exercises the exact same load-more path a real pan-back
+   *  triggers, without simulating real chart-canvas scroll interaction. */
+  __test_triggerLoadMore(): Promise<void> {
+    return this.loadMore();
+  }
+
+  /** Test-only: the adapter's current view of the forming (last) bar. */
+  __test_lastBar(): ApiOhlcBar {
+    return this.bars[this.bars.length - 1];
   }
 
   dispose(): void {
