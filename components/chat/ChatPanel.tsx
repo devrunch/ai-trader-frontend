@@ -32,7 +32,7 @@ export interface ChatPanelProps {
   onRemoveDrawings?: (turnId: string) => void;
   /** The agent asked to toggle chart indicators. */
   onIndicators: (change: { add?: string[]; remove?: string[] }) => void;
-  /** The agent authored one or more custom (diascript) indicators. */
+  /** The agent authored one or more custom Pine indicators. */
   onCustomIndicator: (specs: CustomIndicatorSpec[]) => void;
   /**
    * The user chose to act on a trade the agent worked through. Carries the turn

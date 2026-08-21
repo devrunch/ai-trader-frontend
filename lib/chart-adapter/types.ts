@@ -28,9 +28,7 @@ export interface PineIndicatorSpec {
 
 /**
  * Everything a chart consumer needs, with zero library-specific types
- * crossing the boundary. Implemented today by KlinechartsAdapter (this
- * task), and by LightweightChartsAdapter later (Task 5) with no change
- * required here or in any consumer.
+ * crossing the boundary. Implemented by LightweightChartsAdapter.
  */
 export interface ChartAdapter {
   mount(el: HTMLElement, options: ChartMountOptions): Promise<void>;
@@ -40,17 +38,9 @@ export interface ChartAdapter {
   setPriceLevels(levels: PriceLevels): void;
   pushLiveTick(price: number): void;
 
-  /** klinecharts-only: attach/detach by fixed built-in name (EMA, MACD, ...).
-   *  A no-op under the Pine model (LightweightChartsAdapter) -- there is no
-   *  fixed catalog to name against once Pine is the only indicator engine. */
-  setIndicators(names: string[]): void;
-  /** klinecharts/diascript-only: an agent-authored diascript formula,
-   *  registered and attached by name. Superseded by attachPineIndicator
-   *  once Task 9 rewrites the chat agent to write Pine instead of diascript. */
-  attachCustomIndicator(spec: { name: string; source: string; outputName: string; pane: "main" | "sub" }): Promise<string | null>;
-
-  /** Pine-only: attach/remove one indicator by source. The individual-attach
-   *  equivalent of setIndicators under the model with no fixed catalog. */
+  /** Attach/remove one Pine-authored indicator by source -- there is no
+   *  fixed catalog to name against, so every indicator beyond the default
+   *  candle+volume view is attached individually. */
   attachPineIndicator(spec: PineIndicatorSpec): Promise<string>;
   removeIndicator(id: string): void;
 

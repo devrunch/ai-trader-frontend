@@ -48,12 +48,12 @@ const MAX_WATCHLIST_SIZE = 15;
  *
  * IndicatorSearchModal/IndicatorMenu (removed from this page) were built
  * entirely around the retired klinecharts/diascript catalog -- there is no
- * catalog to search under the Pine model, and keeping that UI wired to a
- * now-no-op setIndicators would show working-looking controls that
- * silently did nothing when clicked. A real replacement (paste-a-Pine-
- * script, or a genuine indicator library once one exists) is separate,
- * unscoped UI work, not attempted here. For now indicators attach only via
- * the chat agent (Task 9) or programmatically.
+ * catalog to search under the Pine model, and keeping that UI wired to
+ * controls with nothing behind them would look functional while silently
+ * doing nothing when clicked. A real replacement (paste-a-Pine-script, or
+ * a genuine indicator library once one exists) is separate, unscoped UI
+ * work, not attempted here. For now indicators attach only via the chat
+ * agent (generate_custom_indicator) or programmatically.
  */
 const DEFAULT_INDICATORS: AttachedIndicator[] = [];
 

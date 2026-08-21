@@ -14,8 +14,6 @@
     "@base-ui/react": "^1.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "diascript": "^0.0.11",
-    "klinecharts": "^10.0.2",
     "lightweight-charts": "^5.2.0",
     "lucide-react": "^1.26.0",
     "next": "16.2.7",

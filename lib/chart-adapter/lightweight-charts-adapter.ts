@@ -122,19 +122,6 @@ export class LightweightChartsAdapter implements ChartAdapter {
     this.candleSeries.update({ time: updated.time as never, open: updated.open, high: updated.high, low: updated.low, close: updated.close });
   }
 
-  setIndicators(): void { /* no-op under the Pine model -- indicators are attached/removed individually via attachPineIndicator/removeIndicator, never as a bulk name list (there is no fixed catalog to name against) */ }
-
-  async attachCustomIndicator(): Promise<string | null> {
-    // The klinecharts-only diascript custom-indicator path -- diascript is
-    // retired under this adapter (see the migration spec's "Why diascript
-    // can't just be ported"). Agent-authored indicators go through
-    // attachPineIndicator once Task 9 rewrites the chat agent's tool to
-    // write Pine instead. Not wired here since ChartAdapter is a shared
-    // interface both adapters implement and this method only has meaning
-    // for the klinecharts side during the transition.
-    throw new Error("attachCustomIndicator is klinecharts/diascript-only -- use attachPineIndicator");
-  }
-
   addDrawings(drawings: ChatDrawing[], groupId: string): void {
     if (!this.candleSeries) return;
     const list = this.drawings.get(groupId) ?? [];
