@@ -87,6 +87,9 @@ export class LightweightChartsAdapter implements ChartAdapter {
 
   seriesCount(): number { return (this.candleSeries ? 1 : 0) + (this.volumeSeries ? 1 : 0) + [...this.pineSeries.values()].reduce((n, s) => n + s.length, 0); }
 
+  /** Test-only: how many panes the chart currently has. */
+  __test_paneCount(): number { return this.chart?.panes().length ?? 0; }
+
   async attachPineIndicator(spec: PineIndicatorSpec): Promise<string> {
     const result = await runPineIndicator(spec.source, this.bars);
     if (!result.ok || !result.plots || !this.chart) return spec.id;

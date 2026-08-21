@@ -135,4 +135,38 @@ describe("LightweightChartsAdapter", () => {
     expect(adapter.__test_drawingCount("draw")).toBe(1);
     adapter.dispose();
   });
+
+  it("two main-pane indicators and the candle series all coexist on pane 0, none evicted", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      { time: 1767000960, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1200 },
+      { time: 1767001020, open: 101.5, high: 103, low: 101, close: 102.5, volume: 1300 },
+    ] });
+    const before = adapter.seriesCount(); // candle + volume = 2
+    await adapter.attachPineIndicator({ id: "a", source: "//@version=5\nindicator(\"a\")\nplot(ta.sma(close,5), \"A\")", label: "A", pane: "main" });
+    await adapter.attachPineIndicator({ id: "b", source: "//@version=5\nindicator(\"b\")\nplot(ta.sma(close,10), \"B\")", label: "B", pane: "main" });
+    // Both main-pane attaches stayed on pane 0 (paneIndex 0 for "main"), and
+    // neither evicted the other or the candle/volume series -- confirmed by
+    // count, not just "didn't throw".
+    expect(adapter.seriesCount()).toBe(before + 2);
+    expect(adapter.__test_paneCount()).toBe(2); // candle pane (0) + the volume pane (1) only, no new pane created
+    adapter.dispose();
+  });
+
+  it("a sub-pane indicator gets its own new pane, not pane 0", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      { time: 1767000960, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1200 },
+    ] });
+    const paneCountBefore = adapter.__test_paneCount();
+    await adapter.attachPineIndicator({ id: "rsi", source: "//@version=5\nindicator(\"rsi\")\nplot(ta.rsi(close,14), \"RSI\")", label: "RSI", pane: "sub" });
+    expect(adapter.__test_paneCount()).toBeGreaterThan(paneCountBefore);
+    adapter.dispose();
+  });
 });
