@@ -28,7 +28,7 @@ import { PERIODS } from "@/lib/periods";
 import { useChartLayout } from "@/lib/use-chart-layout";
 import { useLiveQuote } from "@/lib/use-live-quote";
 import { useMarketStatus } from "@/lib/market-status";
-import { CandlestickChart } from "@/components/CandlestickChart";
+import { CandlestickChart, type LegendItem } from "@/components/CandlestickChart";
 import type { ChartAdapter } from "@/lib/chart-adapter/types";
 import { OrderTicket, type OrderPrefill } from "@/components/OrderTicket";
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -37,6 +37,9 @@ import { DrawingToolbar, type DrawTool } from "@/components/terminal/DrawingTool
 import { SignalPanel, type DisplaySignal } from "@/components/terminal/SignalPanel";
 import { PositionsPanel } from "@/components/terminal/PositionsPanel";
 import { Disclaimer } from "@/components/Disclaimer";
+import { IndicatorPickerModal } from "@/components/terminal/IndicatorPickerModal";
+import { toAttachedIndicator, VOLUME_PROFILE_MODE_BY_ID, INDICATOR_NAME_BY_ID } from "@/lib/indicators/catalog";
+import { VSA_LEGEND } from "@/lib/chart-adapter/vsa-colors";
 import type { AttachedIndicator } from "@/lib/api/charts";
 
 const MAX_WATCHLIST_SIZE = 15;
@@ -114,16 +117,23 @@ export default function TerminalPage() {
   // ?symbol=XYZ lets the Brief hand a candidate straight to the Terminal --
   // also the only thing a reload has to recover the user's own last pick
   // from, so selectSymbol() below keeps this in sync on every change.
-  const [activeSymbol, setActiveSymbol]     = useState(() => {
-    if (typeof window === "undefined") return "RELIANCE";
-    const s = new URLSearchParams(window.location.search).get("symbol");
-    return s ? s.toUpperCase() : "RELIANCE";
-  });
-  const [activeExchange, setActiveExchange] = useState(() => {
-    if (typeof window === "undefined") return "NSE";
-    const e = new URLSearchParams(window.location.search).get("exchange");
-    return e ? e.toUpperCase() : "NSE";
-  });
+  // Reading window.location during the initializer diverges from the server
+  // render (window doesn't exist there, so it always renders "RELIANCE"/"NSE")
+  // -- confirmed by hand as a real hydration-mismatch error whenever the URL
+  // named any other symbol. Starting from the same fixed default on both
+  // sides and correcting from the URL in an effect (client-only, runs after
+  // hydration) is the standard fix; it costs one frame at the default symbol
+  // before the real one takes over.
+  const [activeSymbol, setActiveSymbol]     = useState("RELIANCE");
+  const [activeExchange, setActiveExchange] = useState("NSE");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get("symbol");
+    const e = params.get("exchange");
+    if (s) setActiveSymbol(s.toUpperCase());
+    if (e) setActiveExchange(e.toUpperCase());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [period, setPeriod]                 = useState("1D");
   const [bars, setBars]                     = useState<ApiOhlcBar[]>([]);
   const [barsLoading, setBarsLoading]       = useState(true);
@@ -154,7 +164,6 @@ export default function TerminalPage() {
   const [searchOpen, setSearchOpen]   = useState(false);
   /** Which exchange "Load anyway" jumps to when no live match covers it. */
   const [searchExchange, setSearchExchange] = useState<string>("NSE");
-  const searchWrapRef = useRef<HTMLDivElement>(null);
 
   /* Real symbol search — company name or ticker, across every exchange this
      app can chart, each result already carrying its own correct exchange so
@@ -196,6 +205,7 @@ export default function TerminalPage() {
   const [chartReady, setChartReady] = useState(0);
 
   const [indicators, setIndicators] = useState<AttachedIndicator[]>(DEFAULT_INDICATORS);
+  const [indicatorPickerOpen, setIndicatorPickerOpen] = useState(false);
   /* setIndicators here only updates the app's own record of what SHOULD be
      attached (and is what gets saved/restored) -- it does not itself touch
      the chart. Actually attaching/removing is this effect's job, diffed
@@ -214,9 +224,86 @@ export default function TerminalPage() {
     }
     for (const spec of indicators) {
       if (attached.has(spec.id)) continue;
-      chart.attachPineIndicator(spec).then(() => attached.add(spec.id));
+      // Marked synchronously, before the attach call resolves: attachPineIndicator
+      // awaits a network round-trip, so without this a second effect run racing
+      // ahead of that promise (React StrictMode's double-invoke in dev, or a
+      // rapid indicators-state change) would see `attached` not-yet-updated and
+      // attach the same indicator a second time -- a real duplicate pane, caught
+      // by hand when RSI showed up twice from a single toggle.
+      attached.add(spec.id);
+      chart.attachPineIndicator(spec);
     }
   }, [indicators, chartReady]);
+
+  // Volume Profile isn't a Pine script (no time axis of its own -- see
+  // volume-profile-primitive.ts), so it doesn't go through the indicators
+  // diffing effect above -- its own set of catalog ids (several modes, e.g.
+  // Session alongside Visible Range, can be on at once) and its own diffing
+  // effect, mirroring the Pine one's attach/remove shape.
+  const [volumeProfiles, setVolumeProfiles] = useState<Set<string>>(new Set());
+  const attachedVpRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const attached = attachedVpRef.current;
+    for (const id of [...attached]) {
+      if (volumeProfiles.has(id)) continue;
+      chart.removeVolumeProfile(id);
+      attached.delete(id);
+    }
+    for (const id of volumeProfiles) {
+      if (attached.has(id)) continue;
+      const mode = VOLUME_PROFILE_MODE_BY_ID[id];
+      if (!mode) continue;
+      attached.add(id);
+      chart.attachVolumeProfile(id, mode);
+    }
+  }, [volumeProfiles, chartReady]);
+
+  // Volume Spread Analysis recolors the existing volume histogram in place --
+  // a single on/off switch, not an id-keyed attach/remove like everything
+  // else (there's only one volume series to recolor).
+  const [vsaOn, setVsaOn] = useState(false);
+  useEffect(() => {
+    chartRef.current?.setVolumeSpreadAnalysis(vsaOn);
+  }, [vsaOn, chartReady]);
+
+  // The on-chart legend's hide toggle. Not persisted through save/restore --
+  // only attach/detach does that; hidden state resets to visible on reload,
+  // a deliberate v1 gap rather than touching AttachedIndicator's save shape.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    for (const id of [...indicators.map((i) => i.id), ...volumeProfiles]) {
+      chart.setIndicatorVisible(id, !hiddenIds.has(id));
+    }
+  }, [hiddenIds, indicators, volumeProfiles, chartReady]);
+
+  const legendItems: LegendItem[] = [
+    ...indicators.map((i): LegendItem => ({ id: i.id, label: i.label, hidden: hiddenIds.has(i.id) })),
+    ...[...volumeProfiles].map((id): LegendItem => ({ id, label: INDICATOR_NAME_BY_ID[id] ?? id, hidden: hiddenIds.has(id) })),
+    // VSA is a single boolean toggle with no separate "attached but hidden"
+    // state to distinguish -- only shown while on, and its hide/delete icons
+    // both just turn it off (see handleToggleIndicatorVisible/handleDeleteIndicator).
+    ...(vsaOn ? [{ id: "vsa", label: INDICATOR_NAME_BY_ID.vsa, hidden: false, colorKey: VSA_LEGEND }] : []),
+  ];
+
+  function handleDeleteIndicator(id: string) {
+    if (id === "vsa") { setVsaOn(false); return; }
+    setIndicators((prev) => prev.filter((a) => a.id !== id));
+    setVolumeProfiles((prev) => { if (!prev.has(id)) return prev; const next = new Set(prev); next.delete(id); return next; });
+    setHiddenIds((prev) => { if (!prev.has(id)) return prev; const next = new Set(prev); next.delete(id); return next; });
+  }
+
+  function handleToggleIndicatorVisible(id: string, visible: boolean) {
+    if (id === "vsa") { if (!visible) setVsaOn(false); return; }
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      if (visible) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   const [rightTab, setRightTab] = useState<"signal" | "trade" | "positions" | "chat">("signal");
   const [positions, setPositions] = useState<ApiPosition[]>([]);
@@ -269,6 +356,9 @@ export default function TerminalPage() {
     // Every per-turn group, plus the legacy shared one from before turn ids.
     chart?.removeDrawingsWhere((groupId) => groupId.startsWith("ai"));
     setIndicators(DEFAULT_INDICATORS);
+    setVolumeProfiles(new Set());
+    setHiddenIds(new Set());
+    setVsaOn(false);
     setActiveTool("cursor");
     // Clearing has to reach the server too, or the next reload brings it back.
     layout.clear();
@@ -441,16 +531,6 @@ export default function TerminalPage() {
       .finally(() => setSignalLoading(false));
   }, [activeSymbol]);
 
-  /* Close the symbol search on outside click. The indicator menu owns its own
-     — a dropdown's dismissal is a fact about the dropdown, not about the page. */
-  useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) setSearchOpen(false);
-    }
-    document.addEventListener("click", onClick);
-    return () => document.removeEventListener("click", onClick);
-  }, []);
-
   /* Load running positions when that tab is open */
   useEffect(() => {
     if (rightTab !== "positions") return;
@@ -532,6 +612,11 @@ export default function TerminalPage() {
   const change    = quote?.change ?? null;
   const changePct = quote?.change_percent ?? null;
   const isUp      = (change ?? 0) >= 0;
+  // Absent (not 0) off-hours, on the yfinance fallback, or for an illiquid
+  // symbol with no live order book -- same "never fabricate a number" rule as ltp above.
+  const bid = quote?.bid ?? null;
+  const ask = quote?.ask ?? null;
+  const spread = quote?.spread ?? null;
 
   const q = searchQuery.trim().toUpperCase();
   const activeInWatchlist = watchlist.some(w => w.symbol === activeSymbol && w.exchange === activeExchange);
@@ -567,21 +652,42 @@ export default function TerminalPage() {
 
       {/* ── Top toolbar ── */}
       <div className="flex items-center gap-3 px-3 py-2 border-b border-border shrink-0">
-        {/* Search */}
-        <div className="relative w-60 shrink-0" ref={searchWrapRef}>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border focus-within:border-primary transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
-              onFocus={() => setSearchOpen(true)}
-              placeholder="Search symbol…"
-              className="flex-1 min-w-0 text-sm text-foreground placeholder-muted-foreground focus:outline-none bg-transparent"
-            />
-          </div>
-          {searchOpen && (
-            <div className="absolute top-full left-0 w-80 mt-1.5 bg-card border border-border shadow-lg z-30 overflow-hidden">
+        {/* Search — a compact trigger button opening a modal, not an
+            always-expanded input; freed up real toolbar width that the
+            price/change/bid-ask group next to it needed. */}
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 text-xs font-semibold transition-colors shrink-0"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Search
+        </button>
+        {searchOpen && (
+          <div
+            role="dialog" aria-modal="true" aria-label="Search symbols"
+            className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-sm p-4 pt-[8vh]"
+            onClick={() => setSearchOpen(false)}
+          >
+            <div
+              className="bg-card border border-border w-full max-w-md max-h-[70vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2" className="shrink-0"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                  autoFocus
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search symbol…"
+                  aria-label="Search symbol"
+                  className="flex-1 min-w-0 text-sm text-foreground placeholder-muted-foreground focus:outline-none bg-transparent"
+                />
+                <button onClick={() => setSearchOpen(false)} aria-label="Close" className="text-muted-foreground hover:text-foreground shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="overflow-y-auto">
               {q ? (
                 <>
                   {/* Real results — company name attached, exchange already
@@ -668,9 +774,10 @@ export default function TerminalPage() {
                   })}
                 </>
               )}
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Symbol + price inline */}
         <div className="flex items-baseline gap-2 min-w-0">
@@ -688,6 +795,13 @@ export default function TerminalPage() {
                   {isUp ? "+" : "−"}{Math.abs(change).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
                 </span>
               )}
+              {bid !== null && ask !== null && (
+                <span className="font-mono text-[10px] text-muted-foreground" title={spread !== null ? `Spread ${spread.toFixed(2)}` : undefined}>
+                  <span style={{ color: "var(--buy)" }}>B {bid.toFixed(2)}</span>
+                  {" / "}
+                  <span style={{ color: "var(--sell)" }}>A {ask.toFixed(2)}</span>
+                </span>
+              )}
             </>
           )}
           {!REALTIME_EXCHANGES.has(activeExchange) && (
@@ -697,7 +811,38 @@ export default function TerminalPage() {
 
         <div className="flex-1" />
 
-        {/* Indicator picker removed here -- see DEFAULT_INDICATORS' comment above. */}
+        {/* No icon, no count -- the on-chart legend and pane toolbars already
+            show exactly what's attached; duplicating that count here was
+            redundant. */}
+        <button onClick={() => setIndicatorPickerOpen(true)}
+          className="px-2.5 py-1.5 border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 text-xs font-semibold transition-colors">
+          Indicators
+        </button>
+
+        <IndicatorPickerModal
+          open={indicatorPickerOpen}
+          onClose={() => setIndicatorPickerOpen(false)}
+          attachedIds={new Set([...indicators.map((i) => i.id), ...volumeProfiles, ...(vsaOn ? ["vsa"] : [])])}
+          onToggle={(entry) => {
+            if (entry.kind === "volume-profile") {
+              setVolumeProfiles((prev) => {
+                const next = new Set(prev);
+                if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
+                return next;
+              });
+              return;
+            }
+            if (entry.kind === "vsa") {
+              setVsaOn((on) => !on);
+              return;
+            }
+            setIndicators((prev) =>
+              prev.some((a) => a.id === entry.id)
+                ? prev.filter((a) => a.id !== entry.id)
+                : [...prev, toAttachedIndicator(entry)],
+            );
+          }}
+        />
 
         <div className="w-px h-5 bg-border mx-1 hidden lg:block" />
 
@@ -779,7 +924,10 @@ export default function TerminalPage() {
           ) : (
             <CandlestickChart fill bars={bars} signal={displaySignal} livePrice={quote?.ltp}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
-              onLoadMore={handleLoadMore} />
+              onLoadMore={handleLoadMore}
+              legendItems={legendItems}
+              onToggleVisible={handleToggleIndicatorVisible}
+              onDelete={handleDeleteIndicator} />
           )}
         </div>
 

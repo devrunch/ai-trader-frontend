@@ -22,7 +22,7 @@ export interface AttachedIndicator {
   id: string;
   source: string;
   label: string;
-  pane: "main" | "sub";
+  pane: "main" | "sub" | "volume";
 }
 
 export interface ChartLayout {

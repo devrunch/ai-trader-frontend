@@ -75,6 +75,12 @@ export interface Quote {
   ltp: number;
   change: number;
   change_percent: number;
+  /** Top-of-book bid/ask from the broker's market depth. Absent when the
+   *  quote came from the yfinance fallback, or when a symbol has no live
+   *  order book (pre-market, illiquid) -- never fabricated as 0. */
+  bid?: number | null;
+  ask?: number | null;
+  spread?: number | null;
 }
 
 export const getMarketStatus = () =>

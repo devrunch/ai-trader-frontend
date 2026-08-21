@@ -133,6 +133,23 @@ body {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Thin, theme-colored scrollbars app-wide instead of the OS default --
+   Firefox via scrollbar-width/-color, Chromium/Edge/Safari via the
+   ::-webkit-scrollbar pseudo-elements. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border: 2px solid var(--background);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: var(--muted-foreground); }
+*::-webkit-scrollbar-corner { background: transparent; }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

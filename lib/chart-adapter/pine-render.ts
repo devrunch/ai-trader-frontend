@@ -3,6 +3,15 @@ import type { PinePlotPoint } from "@/lib/api/pine";
 
 const BAND_SUFFIX = /^(.*) (Upper|Lower)$/;
 
+// Alpha suffixes for a single indicator's 2nd/3rd/... own line (e.g. MACD's
+// three plots, or a Upper/Lower band pair) -- full color for the first,
+// progressively lighter after, so an indicator's own lines stay tied
+// together visually while still being tellable apart from each other.
+const ALPHA_STEPS = ["", "cc", "88", "55"];
+function colorAt(base: string, index: number): string {
+  return base + (ALPHA_STEPS[index] ?? ALPHA_STEPS[ALPHA_STEPS.length - 1]);
+}
+
 /** Drops warmup-period points (value: null -- e.g. ta.sma's first few bars
  *  before enough history exists, a real and expected state) and converts
  *  PineTS's own ms-epoch time to LWC's UTCTimestamp (seconds). Passing a
@@ -30,10 +39,18 @@ export function attachPinePlotsToPane(
   chart: IChartApi,
   paneIndex: number,
   plots: Record<string, PinePlotPoint[]>,
+  priceScaleId?: string,
+  color?: string,
 ): ISeriesApi<SeriesType>[] {
   const out: ISeriesApi<SeriesType>[] = [];
   const bandPairs = new Map<string, { upper?: PinePlotPoint[]; lower?: PinePlotPoint[] }>();
   const plain: [string, PinePlotPoint[]][] = [];
+  const scaleOpt = priceScaleId ? { priceScaleId } : {};
+  let colorIndex = 0;
+  // LWC's own default (a shade of blue) is only used when the caller passes
+  // no color at all -- every real call today does, but existing tests mount
+  // indicators without one and shouldn't need updating just for that.
+  const colorOpt = () => (color ? { color: colorAt(color, colorIndex++) } : {});
 
   for (const [name, points] of Object.entries(plots)) {
     const match = name.match(BAND_SUFFIX);
@@ -48,16 +65,16 @@ export function attachPinePlotsToPane(
   }
 
   for (const [name, points] of plain) {
-    const series = chart.addSeries(LineSeries, { title: name }, paneIndex);
+    const series = chart.addSeries(LineSeries, { title: name, ...scaleOpt, ...colorOpt() }, paneIndex);
     series.setData(toSeriesData(points));
     out.push(series);
   }
 
   for (const [base, { upper, lower }] of bandPairs) {
     if (!upper || !lower) continue; // one side missing -- not a real band, skip rather than guess
-    const upperSeries = chart.addSeries(LineSeries, { title: `${base} Upper` }, paneIndex);
+    const upperSeries = chart.addSeries(LineSeries, { title: `${base} Upper`, ...scaleOpt, ...colorOpt() }, paneIndex);
     upperSeries.setData(toSeriesData(upper));
-    const lowerSeries = chart.addSeries(LineSeries, { title: `${base} Lower` }, paneIndex);
+    const lowerSeries = chart.addSeries(LineSeries, { title: `${base} Lower`, ...scaleOpt, ...colorOpt() }, paneIndex);
     lowerSeries.setData(toSeriesData(lower));
     out.push(upperSeries, lowerSeries);
   }
