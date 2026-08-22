@@ -101,4 +101,54 @@ describe("attachPinePlotsToPane", () => {
     expect(upperColor).toBe(lowerColor);
     chart.remove();
   });
+
+  it("draws overbought/oversold guide lines for a known oscillator (RSI 30/70)", () => {
+    const el = document.createElement("div"); document.body.appendChild(el);
+    const chart = createChart(el, { width: 400, height: 300, layout: { attributionLogo: false } });
+    const plots = { RSI: pts(45, 50, 55) };
+
+    const series = attachPinePlotsToPane(chart, 0, plots);
+
+    const levels = series[0].priceLines().map((l) => l.options().price);
+    expect(levels.sort()).toEqual([30, 70]);
+    chart.remove();
+  });
+
+  it("plots Parabolic SAR as dots, not a connected line", () => {
+    const el = document.createElement("div"); document.body.appendChild(el);
+    const chart = createChart(el, { width: 400, height: 300, layout: { attributionLogo: false } });
+    const plots = { SAR: pts(101, 99, 102) };
+
+    const series = attachPinePlotsToPane(chart, 0, plots);
+
+    const opts = series[0].options() as { lineVisible?: boolean; pointMarkersVisible?: boolean };
+    expect(opts.lineVisible).toBe(false);
+    expect(opts.pointMarkersVisible).toBe(true);
+    chart.remove();
+  });
+
+  it("colors Supertrend's up/down segments green/red regardless of the palette index", () => {
+    const el = document.createElement("div"); document.body.appendChild(el);
+    const chart = createChart(el, { width: 400, height: 300, layout: { attributionLogo: false } });
+    const plots = { "Supertrend Up": pts(99, 98), "Supertrend Down": pts(null, null) };
+
+    // colorIndex 3 would normally pick a very different hue -- Supertrend
+    // ignores it, it's a fixed trend-direction convention, not a palette pick.
+    const series = attachPinePlotsToPane(chart, 0, plots, undefined, 3);
+
+    const upTrend = series.find((s) => s.options().title === "Supertrend Up");
+    const downTrend = series.find((s) => s.options().title === "Supertrend Down");
+    expect((upTrend?.options() as { color?: string }).color).toBe("#16c784");
+    expect((downTrend?.options() as { color?: string }).color).toBe("#f0525d");
+    chart.remove();
+  });
+
+  it("attaches a fill primitive between an Upper/Lower band without throwing", () => {
+    const el = document.createElement("div"); document.body.appendChild(el);
+    const chart = createChart(el, { width: 400, height: 300, layout: { attributionLogo: false } });
+    const plots = { "BB Upper": pts(105, 106), "BB Lower": pts(95, 96), "BB Basis": pts(100, 101) };
+
+    expect(() => attachPinePlotsToPane(chart, 0, plots, undefined, 0)).not.toThrow();
+    chart.remove();
+  });
 });

@@ -1,8 +1,26 @@
 import { HistogramSeries, LineSeries, type IChartApi, type ISeriesApi, type SeriesType, type UTCTimestamp } from "lightweight-charts";
 import type { PinePlotPoint } from "@/lib/api/pine";
 import { INDICATOR_COLORS } from "./palette";
+import { createBandFillPrimitive, type DrawPoint } from "./drawing-primitives";
 
 const BAND_SUFFIX = /^(.*) (Upper|Lower)$/;
+
+// Standard TradingView overbought/oversold (or zero-cross) guide lines, keyed
+// by the plot title -- our own catalog.ts naming, not something PineTS's
+// output carries. Values confirmed against TradingView's own published
+// defaults: RSI 70/30, Stochastic 80/20, CCI +-100, Williams %R -20/-80.
+const REFERENCE_LEVELS: Record<string, number[]> = {
+  RSI: [30, 70],
+  "Stoch %K": [20, 80],
+  CCI: [-100, 100],
+  "%R": [-80, -20],
+  MFI: [20, 80],
+  MACD: [0],
+  Momentum: [0],
+  ROC: [0],
+  CMO: [0],
+  TSI: [0],
+};
 
 /** Drops warmup-period points (value: null -- e.g. ta.sma's first few bars
  *  before enough history exists, a real and expected state) and converts
@@ -32,6 +50,23 @@ function toHistogramData(points: PinePlotPoint[]): { time: UTCTimestamp; value: 
       : (growing ? "#f0525d" : "#f0525d66");
     return { time: Math.floor(p.time / 1000) as UTCTimestamp, value: p.value, color };
   });
+}
+
+/** Both sides of a band come from the same PineTS run over the same bars,
+ *  so they're the same length in the same order -- this only drops the
+ *  positions where either side hasn't warmed up yet, keeping the two
+ *  arrays zipped for the fill primitive's segment-by-segment walk. */
+function alignedBandPoints(a: PinePlotPoint[], b: PinePlotPoint[]): { a: DrawPoint[]; b: DrawPoint[] } {
+  const outA: DrawPoint[] = [];
+  const outB: DrawPoint[] = [];
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const av = a[i].value, bv = b[i].value;
+    if (av == null || bv == null || !Number.isFinite(av) || !Number.isFinite(bv)) continue;
+    outA.push({ time: Math.floor(a[i].time / 1000), value: av });
+    outB.push({ time: Math.floor(b[i].time / 1000), value: bv });
+  }
+  return { a: outA, b: outB };
 }
 
 /**
@@ -87,15 +122,32 @@ export function attachPinePlotsToPane(
       out.push(series);
       continue;
     }
-    const series = chart.addSeries(LineSeries, { title: name, ...scaleOpt, ...nextLineColor() }, paneIndex);
+    // TradingView plots Parabolic SAR as discrete dots above/below price,
+    // never a connected line -- a line implies a false continuity between
+    // one bar's stop level and the next, which isn't how SAR is read.
+    const isSar = name === "SAR";
+    // Supertrend's up/down segments are TradingView's one fixed convention
+    // (green while price is above it, red while below), not a palette
+    // choice -- overrides the generic per-line color cycling below.
+    const supertrendColor = name === "Supertrend Up" ? "#16c784" : name === "Supertrend Down" ? "#f0525d" : undefined;
+    const series = chart.addSeries(LineSeries, {
+      title: name,
+      ...scaleOpt,
+      ...(isSar ? { lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 2 } : {}),
+      ...(supertrendColor ? { color: supertrendColor } : nextLineColor()),
+    }, paneIndex);
     series.setData(toSeriesData(points));
+    for (const level of REFERENCE_LEVELS[name] ?? []) {
+      series.createPriceLine({ price: level, color: "#8b8a9e99", lineStyle: 2, lineWidth: 1 });
+    }
     out.push(series);
   }
 
   // Both sides of one channel share a single color -- TradingView draws
   // Bollinger/Keltner bounds as one band, not two independently-colored
   // series, so upper and lower stay tied together visually.
-  const bandColorOpt = colorIndex == null ? {} : { color: INDICATOR_COLORS[colorIndex % INDICATOR_COLORS.length] };
+  const bandColor = colorIndex == null ? undefined : INDICATOR_COLORS[colorIndex % INDICATOR_COLORS.length];
+  const bandColorOpt = bandColor ? { color: bandColor } : {};
   for (const [base, { upper, lower }] of bandPairs) {
     if (!upper || !lower) continue; // one side missing -- not a real band, skip rather than guess
     const upperSeries = chart.addSeries(LineSeries, { title: `${base} Upper`, ...scaleOpt, ...bandColorOpt }, paneIndex);
@@ -103,6 +155,18 @@ export function attachPinePlotsToPane(
     const lowerSeries = chart.addSeries(LineSeries, { title: `${base} Lower`, ...scaleOpt, ...bandColorOpt }, paneIndex);
     lowerSeries.setData(toSeriesData(lower));
     out.push(upperSeries, lowerSeries);
+
+    // The filled channel itself -- Ichimoku's "Cloud" gets TradingView's
+    // real bullish-green/bearish-red two-tone (Span A above/below Span B);
+    // every other band (Bollinger, Keltner) is one translucent tint of its
+    // own line color, since both bounds are one channel, not two signals.
+    const { a, b } = alignedBandPoints(upper, lower);
+    const fill = createBandFillPrimitive(
+      base === "Cloud"
+        ? { a, b, colorAAboveB: "#16c78433", colorBAboveA: "#f0525d33" }
+        : { a, b, colorAAboveB: `${bandColor ?? "#8b8a9e"}22` },
+    );
+    upperSeries.attachPrimitive(fill);
   }
 
   return out;
