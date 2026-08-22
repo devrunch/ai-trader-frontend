@@ -212,6 +212,24 @@ export default function TerminalPage() {
      against the adapter (there is no bulk "set these" call under the Pine
      model, unlike the old klinecharts name-list). */
   const attachedPineRef = useRef<Set<string>>(new Set());
+  // The Pine sandbox can fail transiently (a subprocess race under load, a
+  // timeout) with nothing else wrong -- attachPineIndicator used to return
+  // the indicator's own id even on failure, so this was unreachable: the
+  // indicator "attached" successfully and just never drew anything, with no
+  // error anywhere. Found live when Supertrend silently failed to render.
+  const [indicatorError, setIndicatorError] = useState<{ spec: AttachedIndicator; message: string } | null>(null);
+
+  const attachOne = useCallback((chart: ChartAdapter, spec: AttachedIndicator) => {
+    attachedPineRef.current.add(spec.id);
+    chart.attachPineIndicator(spec).then((id) => {
+      if (id) return;
+      // Allow a retry: this indicator isn't really attached, so the diffing
+      // effect (or the retry button below) should be free to try it again.
+      attachedPineRef.current.delete(spec.id);
+      setIndicatorError({ spec, message: `"${spec.label}" couldn't load -- the chart engine may be busy.` });
+    });
+  }, []);
+
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -230,10 +248,9 @@ export default function TerminalPage() {
       // rapid indicators-state change) would see `attached` not-yet-updated and
       // attach the same indicator a second time -- a real duplicate pane, caught
       // by hand when RSI showed up twice from a single toggle.
-      attached.add(spec.id);
-      chart.attachPineIndicator(spec);
+      attachOne(chart, spec);
     }
-  }, [indicators, chartReady]);
+  }, [indicators, chartReady, attachOne]);
 
   // Volume Profile isn't a Pine script (no time axis of its own -- see
   // volume-profile-primitive.ts), so it doesn't go through the indicators
@@ -928,6 +945,17 @@ export default function TerminalPage() {
               legendItems={legendItems}
               onToggleVisible={handleToggleIndicatorVisible}
               onDelete={handleDeleteIndicator} />
+          )}
+          {indicatorError && (
+            <div className="absolute top-3 right-3 z-20 max-w-xs">
+              <ErrorState compact message={indicatorError.message}
+                onRetry={() => {
+                  const chart = chartRef.current;
+                  const spec = indicatorError.spec;
+                  setIndicatorError(null);
+                  if (chart) attachOne(chart, spec);
+                }} />
+            </div>
           )}
         </div>
 

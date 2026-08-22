@@ -329,9 +329,12 @@ export class LightweightChartsAdapter implements ChartAdapter {
     return series ? (series.options() as { color?: string }).color : undefined;
   }
 
-  async attachPineIndicator(spec: PineIndicatorSpec): Promise<string> {
+  async attachPineIndicator(spec: PineIndicatorSpec): Promise<string | null> {
     const result = await runPineIndicator(spec.source, this.bars);
-    if (!result.ok || !result.plots || !this.chart) return spec.id;
+    // Previously returned spec.id here too -- indistinguishable from success,
+    // so the caller that checks for a null return (and the one that doesn't)
+    // both treated a failed sandbox run as a silent no-op attach.
+    if (!result.ok || !result.plots || !this.chart) return null;
     // "volume" shares pane 0 with "main" (it's positioned over the volume
     // histogram's region, not a pane of its own) -- only "sub" gets a fresh
     // pane. It does NOT share the "volume" price scale itself: volume runs

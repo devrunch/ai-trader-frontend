@@ -64,7 +64,12 @@ export interface ChartAdapter {
   /** Attach/remove one Pine-authored indicator by source -- there is no
    *  fixed catalog to name against, so every indicator beyond the default
    *  candle+volume view is attached individually. */
-  attachPineIndicator(spec: PineIndicatorSpec): Promise<string>;
+  /** Resolves to the attached id, or null if the Pine run failed (a bad
+   *  script, or the sandbox itself -- network error, timeout, subprocess
+   *  crash). Callers must check for null: it used to return the id even on
+   *  failure, which meant the indicator silently attached nothing and the
+   *  one caller that checked for failure never actually saw one. */
+  attachPineIndicator(spec: PineIndicatorSpec): Promise<string | null>;
   removeIndicator(id: string): void;
 
   /** Volume Profile: a price-bucketed histogram, not expressible as a Pine
