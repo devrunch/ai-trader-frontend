@@ -21,6 +21,7 @@ const REFERENCE_LEVELS: Record<string, number[]> = {
   ROC: [0],
   CMO: [0],
   TSI: [0],
+  "EMA Diff": [0],
 };
 
 /** Drops warmup-period points (value: null -- e.g. ta.sma's first few bars

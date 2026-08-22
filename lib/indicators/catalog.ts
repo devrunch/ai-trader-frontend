@@ -55,6 +55,12 @@ export const INDICATOR_CATALOG: IndicatorCatalogEntry[] = [
     // 4-bar symmetric window ([1,2,2,1] weights), not something this catalog
     // entry is choosing to omit.
     source: `${H}indicator("SWMA")\nplot(ta.swma(close), "SWMA")` },
+  { kind: "pine", id: "gaussian", name: "Gaussian Filter", category: "Moving Averages", pane: "main",
+    // No dedicated ta.* function -- a real Gaussian kernel, a genuine
+    // weighted average over the window (not sma()/ema() relabeled), same
+    // worked example the chat agent's own system prompt uses to prove it
+    // won't fake a requested technique's real math.
+    source: `${H}indicator("Gaussian Filter")\nlength = 9\nsigma = 3.0\nsum_w = 0.0\nsum_wv = 0.0\nfor k = 0 to length - 1\n    w = math.exp(-(k * k) / (2 * sigma * sigma))\n    sum_w += w\n    sum_wv += w * close[k]\nplot(sum_wv / sum_w, "Gaussian")` },
 
   // ── Trend (main pane) ──────────────────────────────────────────────
   { kind: "pine", id: "supertrend", name: "Supertrend", category: "Trend", pane: "main",
@@ -65,6 +71,17 @@ export const INDICATOR_CATALOG: IndicatorCatalogEntry[] = [
     source: `${H}indicator("Ichimoku Cloud")\nconv = (ta.highest(high, 9) + ta.lowest(low, 9)) / 2\nbase = (ta.highest(high, 26) + ta.lowest(low, 26)) / 2\nspanA = (conv + base) / 2\nspanB = (ta.highest(high, 52) + ta.lowest(low, 52)) / 2\nplot(conv, "Conversion Line")\nplot(base, "Base Line")\nplot(spanA, "Cloud Upper")\nplot(spanB, "Cloud Lower")` },
   { kind: "pine", id: "dmi", name: "DMI / ADX", category: "Trend", pane: "sub",
     source: `${H}indicator("DMI/ADX")\n[p, mn, adx] = ta.dmi(14, 14)\nplot(p, "+DI")\nplot(mn, "-DI")\nplot(adx, "ADX")` },
+  { kind: "pine", id: "wavelet", name: "Wavelet Trend", category: "Trend", pane: "main",
+    // Stationary wavelet construction: a 2-tap moving average and
+    // a 2-tap difference (the Haar scaling and wavelet filters) at spacing
+    // 1, then the same pair repeated on the first pair's average at spacing
+    // 2 -- each level doubles the tap spacing rather than halving the data,
+    // so every level still produces one value per bar. Only the trend
+    // (approximation) component is plotted; decomposing further into cycle
+    // components is real follow-up work, not attempted here.
+    source: `${H}indicator("Wavelet Trend")\napprox1 = (close + close[1]) / 2\napprox2 = (approx1 + approx1[2]) / 2\nplot(approx2, "Trend")` },
+  { kind: "pine", id: "swing-high", name: "Swing High Line", category: "Trend", pane: "main",
+    source: `${H}indicator("Swing High")\nisSwingHigh = high == ta.highest(high, 10)\nvar float lastSwingHigh = na\nif isSwingHigh\n    lastSwingHigh := high\nplot(lastSwingHigh, "Last Swing High")` },
 
   // ── Volatility ─────────────────────────────────────────────────────
   { kind: "pine", id: "bb", name: "Bollinger Bands", category: "Volatility", pane: "main",
@@ -87,6 +104,11 @@ export const INDICATOR_CATALOG: IndicatorCatalogEntry[] = [
     source: `${H}indicator("Donchian Channels")\nupper = ta.highest(high, 20)\nlower = ta.lowest(low, 20)\nplot((upper + lower) / 2, "Donchian Basis")\nplot(upper, "Donchian Upper")\nplot(lower, "Donchian Lower")` },
   { kind: "pine", id: "envelope", name: "Moving Average Envelope", category: "Volatility", pane: "main",
     source: `${H}indicator("Envelope")\nbasis = ta.sma(close, 20)\nplot(basis * 1.1, "Envelope Upper")\nplot(basis * 0.9, "Envelope Lower")` },
+  { kind: "pine", id: "stdev-band", name: "StdDev Band", category: "Volatility", pane: "main",
+    // Not a moving-average channel like BB/KC -- the band rides directly on
+    // close +- 2 standard deviations, so it tracks price itself rather than
+    // a smoothed basis.
+    source: `${H}indicator("StdDev Band")\ndev = ta.stdev(close, 20) * 2\nplot(close + dev, "StdDev Upper")\nplot(close - dev, "StdDev Lower")` },
 
   // ── Momentum / Oscillators (sub pane) ────────────────────────────
   { kind: "pine", id: "rsi", name: "Relative Strength Index", category: "Momentum", pane: "sub",
@@ -116,6 +138,8 @@ export const INDICATOR_CATALOG: IndicatorCatalogEntry[] = [
     source: `${H}indicator("Bollinger %B")\n[u, m, l] = ta.bb(close, 20, 2)\nplot((close - l) / (u - l), "%B")` },
   { kind: "pine", id: "cog", name: "Center of Gravity", category: "Momentum", pane: "sub",
     source: `${H}indicator("COG")\nplot(ta.cog(close, 10), "COG")` },
+  { kind: "pine", id: "ema-diff", name: "EMA Diff", category: "Momentum", pane: "sub",
+    source: `${H}indicator("EMA Diff")\nplot(ta.ema(close, 20) - ta.ema(close, 50), "EMA Diff")` },
 
   // ── Volume ─────────────────────────────────────────────────────────
   { kind: "pine", id: "mfi", name: "Money Flow Index", category: "Volume", pane: "sub",
