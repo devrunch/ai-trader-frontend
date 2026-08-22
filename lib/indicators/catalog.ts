@@ -46,6 +46,15 @@ export const INDICATOR_CATALOG: IndicatorCatalogEntry[] = [
     source: `${H}indicator("ALMA")\nplot(ta.alma(close, 9, 0.85, 6), "ALMA")` },
   { kind: "pine", id: "vwap", name: "VWAP", category: "Moving Averages", pane: "main",
     source: `${H}indicator("VWAP")\nplot(ta.vwap(close), "VWAP")` },
+  { kind: "pine", id: "linreg", name: "Linear Regression Curve", category: "Moving Averages", pane: "main",
+    source: `${H}indicator("Linear Regression")\nplot(ta.linreg(close, 14, 0), "Linear Reg")` },
+  { kind: "pine", id: "median", name: "Moving Median", category: "Moving Averages", pane: "main",
+    source: `${H}indicator("Median")\nplot(ta.median(close, 20), "Median")` },
+  { kind: "pine", id: "swma", name: "Symmetrically Weighted MA", category: "Moving Averages", pane: "main",
+    // ta.swma has no length parameter in real Pine either -- always a fixed
+    // 4-bar symmetric window ([1,2,2,1] weights), not something this catalog
+    // entry is choosing to omit.
+    source: `${H}indicator("SWMA")\nplot(ta.swma(close), "SWMA")` },
 
   // ── Trend (main pane) ──────────────────────────────────────────────
   { kind: "pine", id: "supertrend", name: "Supertrend", category: "Trend", pane: "main",
@@ -68,6 +77,16 @@ export const INDICATOR_CATALOG: IndicatorCatalogEntry[] = [
     source: `${H}indicator("Spread")\nplot(high - low, "Spread")` },
   { kind: "pine", id: "spread-on-volume", name: "Spread (on Volume)", category: "Volatility", pane: "volume",
     source: `${H}indicator("Spread")\nplot(high - low, "Spread")` },
+  { kind: "pine", id: "bbw", name: "Bollinger Bands Width", category: "Volatility", pane: "sub",
+    source: `${H}indicator("BBW")\nplot(ta.bbw(close, 20, 2), "BBW")` },
+  { kind: "pine", id: "kcw", name: "Keltner Channel Width", category: "Volatility", pane: "sub",
+    source: `${H}indicator("KCW")\nplot(ta.kcw(close, 20, 1.5, false), "KCW")` },
+  { kind: "pine", id: "stdev", name: "Standard Deviation", category: "Volatility", pane: "sub",
+    source: `${H}indicator("StdDev")\nplot(ta.stdev(close, 20), "StdDev")` },
+  { kind: "pine", id: "donchian", name: "Donchian Channels", category: "Volatility", pane: "main",
+    source: `${H}indicator("Donchian Channels")\nupper = ta.highest(high, 20)\nlower = ta.lowest(low, 20)\nplot((upper + lower) / 2, "Donchian Basis")\nplot(upper, "Donchian Upper")\nplot(lower, "Donchian Lower")` },
+  { kind: "pine", id: "envelope", name: "Moving Average Envelope", category: "Volatility", pane: "main",
+    source: `${H}indicator("Envelope")\nbasis = ta.sma(close, 20)\nplot(basis * 1.1, "Envelope Upper")\nplot(basis * 0.9, "Envelope Lower")` },
 
   // ── Momentum / Oscillators (sub pane) ────────────────────────────
   { kind: "pine", id: "rsi", name: "Relative Strength Index", category: "Momentum", pane: "sub",
@@ -88,6 +107,15 @@ export const INDICATOR_CATALOG: IndicatorCatalogEntry[] = [
     source: `${H}indicator("Momentum")\nplot(ta.mom(close, 10), "Momentum")` },
   { kind: "pine", id: "roc", name: "Rate of Change", category: "Momentum", pane: "sub",
     source: `${H}indicator("ROC")\nplot(ta.roc(close, 10), "ROC")` },
+  { kind: "pine", id: "ao", name: "Awesome Oscillator", category: "Momentum", pane: "sub",
+    // TradingView's real AO renders as bars, not a line -- naming the plot
+    // "Histogram" routes it through the same 4-tone bar rendering MACD uses
+    // (see pine-render.ts), not a special case of its own.
+    source: `${H}indicator("Awesome Oscillator")\nao = ta.sma(hl2, 5) - ta.sma(hl2, 34)\nplot(ao, "Histogram")` },
+  { kind: "pine", id: "bbp", name: "Bollinger Bands %B", category: "Momentum", pane: "sub",
+    source: `${H}indicator("Bollinger %B")\n[u, m, l] = ta.bb(close, 20, 2)\nplot((close - l) / (u - l), "%B")` },
+  { kind: "pine", id: "cog", name: "Center of Gravity", category: "Momentum", pane: "sub",
+    source: `${H}indicator("COG")\nplot(ta.cog(close, 10), "COG")` },
 
   // ── Volume ─────────────────────────────────────────────────────────
   { kind: "pine", id: "mfi", name: "Money Flow Index", category: "Volume", pane: "sub",
@@ -96,6 +124,14 @@ export const INDICATOR_CATALOG: IndicatorCatalogEntry[] = [
     source: `${H}indicator("OBV")\nplot(ta.obv(), "OBV")` },
   { kind: "pine", id: "accdist", name: "Accumulation / Distribution", category: "Volume", pane: "sub",
     source: `${H}indicator("Accum/Dist")\nplot(ta.accdist(), "A/D")` },
+  { kind: "pine", id: "pvt", name: "Price Volume Trend", category: "Volume", pane: "sub",
+    source: `${H}indicator("PVT")\nplot(ta.pvt(), "PVT")` },
+  { kind: "pine", id: "nvi", name: "Negative Volume Index", category: "Volume", pane: "sub",
+    source: `${H}indicator("NVI")\nplot(ta.nvi(), "NVI")` },
+  { kind: "pine", id: "pvi", name: "Positive Volume Index", category: "Volume", pane: "sub",
+    source: `${H}indicator("PVI")\nplot(ta.pvi(), "PVI")` },
+  { kind: "pine", id: "wad", name: "Williams Accumulation/Distribution", category: "Volume", pane: "sub",
+    source: `${H}indicator("WAD")\nplot(ta.wad(), "WAD")` },
   { kind: "vsa", id: "vsa", name: "Volume Spread Analysis", category: "Volume", pane: "volume" },
   // TradingView ships a sixth variant, Fixed Range -- it needs a click-drag
   // anchor selection on the chart, which this app's pointer-driven drawing

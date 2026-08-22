@@ -15,6 +15,7 @@ const REFERENCE_LEVELS: Record<string, number[]> = {
   CCI: [-100, 100],
   "%R": [-80, -20],
   MFI: [20, 80],
+  "%B": [0, 1],
   MACD: [0],
   Momentum: [0],
   ROC: [0],
