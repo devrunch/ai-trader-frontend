@@ -14,11 +14,14 @@ import {
   searchSymbols,
   errorMessage,
   PRICE_DELAY_NOTE,
+  getIndicators,
+  deleteIndicator,
   type ApiOhlcBar,
   type ApiSignal,
   type ApiGeneratedSignal,
   type ApiWatchlistItem,
   type ApiPosition,
+  type ApiIndicator,
   type ChatDrawing,
   type CustomIndicatorSpec,
   type SymbolMatch,
@@ -37,8 +40,9 @@ import { DrawingToolbar, type DrawTool } from "@/components/terminal/DrawingTool
 import { SignalPanel, type DisplaySignal } from "@/components/terminal/SignalPanel";
 import { PositionsPanel } from "@/components/terminal/PositionsPanel";
 import { Disclaimer } from "@/components/Disclaimer";
-import { IndicatorPickerModal } from "@/components/terminal/IndicatorPickerModal";
-import { toAttachedIndicator, VOLUME_PROFILE_MODE_BY_ID, INDICATOR_NAME_BY_ID } from "@/lib/indicators/catalog";
+import { IndicatorPickerModal, type PickerEntry } from "@/components/terminal/IndicatorPickerModal";
+import { IndicatorEditorModal } from "@/components/terminal/IndicatorEditorModal";
+import { toAttachedIndicator, SPECIAL_INDICATORS, VOLUME_PROFILE_MODE_BY_ID, INDICATOR_NAME_BY_ID } from "@/lib/indicators/catalog";
 import { VSA_LEGEND } from "@/lib/chart-adapter/vsa-colors";
 import type { AttachedIndicator } from "@/lib/api/charts";
 
@@ -47,16 +51,10 @@ const MAX_WATCHLIST_SIZE = 15;
 /**
  * What a chart shows before anyone touches it, and what Reset returns it to:
  * candle + volume only, both native series under the LWC adapter -- no
- * attached indicator needed for either.
- *
- * IndicatorSearchModal/IndicatorMenu (removed from this page) were built
- * entirely around the retired klinecharts/diascript catalog -- there is no
- * catalog to search under the Pine model, and keeping that UI wired to
- * controls with nothing behind them would look functional while silently
- * doing nothing when clicked. A real replacement (paste-a-Pine-script, or
- * a genuine indicator library once one exists) is separate, unscoped UI
- * work, not attempted here. For now indicators attach only via the chat
- * agent (generate_custom_indicator) or programmatically.
+ * attached indicator needed for either. Indicators attach via the picker
+ * (IndicatorPickerModal, backed by the DB-stored library -- see
+ * lib/api/indicators.ts), the chat agent (generate_custom_indicator), or
+ * programmatically.
  */
 const DEFAULT_INDICATORS: AttachedIndicator[] = [];
 
@@ -206,6 +204,24 @@ export default function TerminalPage() {
 
   const [indicators, setIndicators] = useState<AttachedIndicator[]>(DEFAULT_INDICATORS);
   const [indicatorPickerOpen, setIndicatorPickerOpen] = useState(false);
+
+  /* The 49 built-ins plus this user's own custom indicators -- both live in
+     the same DB-backed list now (see lib/api/indicators.ts), fetched once.
+     Volume Profile/VSA aren't in it; they're not real Pine scripts and stay
+     a small fixed list (SPECIAL_INDICATORS). */
+  const [apiIndicators, setApiIndicators] = useState<ApiIndicator[]>([]);
+  useEffect(() => {
+    let alive = true;
+    getIndicators().then((list) => { if (alive) setApiIndicators(list); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const pickerEntries: PickerEntry[] = [
+    ...apiIndicators.map((i): PickerEntry => ({ ...i, kind: "pine" })),
+    ...SPECIAL_INDICATORS,
+  ];
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingIndicator, setEditingIndicator] = useState<ApiIndicator | null>(null);
   /* setIndicators here only updates the app's own record of what SHOULD be
      attached (and is what gets saved/restored) -- it does not itself touch
      the chart. Actually attaching/removing is this effect's job, diffed
@@ -228,6 +244,19 @@ export default function TerminalPage() {
       attachedPineRef.current.delete(spec.id);
       setIndicatorError({ spec, message: `"${spec.label}" couldn't load -- the chart engine may be busy.` });
     });
+  }, []);
+
+  /* Editing a custom indicator that's already on the chart: the diffing
+     effect below only reacts to an id entering/leaving `indicators`, not to
+     an existing id's own source changing, so a plain state update would
+     leave the OLD compiled series showing. Removing it from both the chart
+     and attachedPineRef first means the effect's next run treats the id as
+     newly-wanted and genuinely re-attaches with the edited source. */
+  const reattachIfLive = useCallback((id: string) => {
+    const chart = chartRef.current;
+    if (!chart || !attachedPineRef.current.has(id)) return;
+    chart.removeIndicator(id);
+    attachedPineRef.current.delete(id);
   }, []);
 
   useEffect(() => {
@@ -839,6 +868,7 @@ export default function TerminalPage() {
         <IndicatorPickerModal
           open={indicatorPickerOpen}
           onClose={() => setIndicatorPickerOpen(false)}
+          entries={pickerEntries}
           attachedIds={new Set([...indicators.map((i) => i.id), ...volumeProfiles, ...(vsaOn ? ["vsa"] : [])])}
           onToggle={(entry) => {
             if (entry.kind === "volume-profile") {
@@ -857,6 +887,36 @@ export default function TerminalPage() {
               prev.some((a) => a.id === entry.id)
                 ? prev.filter((a) => a.id !== entry.id)
                 : [...prev, toAttachedIndicator(entry)],
+            );
+          }}
+          onCreateNew={() => { setEditingIndicator(null); setEditorOpen(true); setIndicatorPickerOpen(false); }}
+          onEdit={(entry) => { setEditingIndicator(entry); setEditorOpen(true); setIndicatorPickerOpen(false); }}
+          onDelete={(id) => {
+            deleteIndicator(id).then(() => {
+              setApiIndicators((prev) => prev.filter((i) => i.id !== id));
+              setIndicators((prev) => prev.filter((a) => a.id !== id)); // detach if it was attached
+            }).catch(() => {});
+          }}
+        />
+
+        <IndicatorEditorModal
+          open={editorOpen}
+          onClose={() => setEditorOpen(false)}
+          initial={editingIndicator}
+          bars={bars}
+          onSaved={(saved) => {
+            setApiIndicators((prev) => {
+              const exists = prev.some((i) => i.id === saved.id);
+              return exists ? prev.map((i) => (i.id === saved.id ? saved : i)) : [...prev, saved];
+            });
+            reattachIfLive(saved.id);
+            // A freshly-created indicator isn't attached anywhere yet -- only
+            // an edit to one already on the chart needs its entry refreshed
+            // (new label/pane/source) so the diffing effect re-attaches it.
+            setIndicators((prev) =>
+              prev.some((a) => a.id === saved.id)
+                ? prev.map((a) => (a.id === saved.id ? toAttachedIndicator(saved) : a))
+                : prev,
             );
           }}
         />

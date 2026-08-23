@@ -22,3 +22,4 @@ export * from "./market";
 export * from "./watchlist";
 export * from "./risk";
 export * from "./admin";
+export * from "./indicators";
