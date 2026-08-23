@@ -63,7 +63,7 @@ const MAX_WATCHLIST_SIZE = 15;
 const DEFAULT_INDICATORS: AttachedIndicator[] = [];
 
 /** Exchanges the search box can jump to directly. */
-const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE"] as const;
+const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE", "MCX"] as const;
 
 /**
  * Exchanges the paper account can actually trade on.
@@ -72,6 +72,11 @@ const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE"] as const;
  * would debit rupees for a dollar fill with no conversion. Matches the API's
  * own `TradableExchange` allowlist; kept here too so the Trade tab can explain
  * itself instead of the user finding out from a 400.
+ *
+ * MCX deliberately NOT included yet: futures have a genuinely different P&L
+ * model (margin, lot size, mark-to-market, no simple quantity × price sizing)
+ * that the equity-shaped paper account doesn't represent. Chart/search/live
+ * data cover MCX now; paper trading it is a real, separate decision.
  */
 const TRADABLE_EXCHANGES = new Set(["NSE", "BSE"]);
 
@@ -84,6 +89,10 @@ const TRADABLE_EXCHANGES = new Set(["NSE", "BSE"]);
  * India-specific, not a currency-mismatch issue). If trading and signal
  * coverage ever diverge, sharing one set here would silently gate the wrong
  * feature.
+ *
+ * MCX deliberately NOT included yet, same reasoning as TRADABLE_EXCHANGES
+ * above — AI-generated buy/sell signals for commodities need their own risk
+ * model, not silently inherited from the equity one.
  */
 const SIGNAL_EXCHANGES = new Set(["NSE", "BSE"]);
 
@@ -92,9 +101,9 @@ const SIGNAL_EXCHANGES = new Set(["NSE", "BSE"]);
  * NYSE, …) rides the yfinance poll instead, and that price is genuinely
  * stale — the delay disclosure only belongs on those.
  */
-const REALTIME_EXCHANGES = new Set(["NSE", "BSE"]);
+const REALTIME_EXCHANGES = new Set(["NSE", "BSE", "MCX"]);
 
-const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$" };
+const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$", MCX: "₹" };
 
 function fromApiSignal(s: ApiSignal): DisplaySignal {
   return {
