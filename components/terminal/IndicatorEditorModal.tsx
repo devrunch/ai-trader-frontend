@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createIndicator, updateIndicator, type ApiIndicator, type ApiOhlcBar, type IndicatorPane } from "@/lib/api";
 import { runPineIndicator } from "@/lib/api/pine";
 import { INDICATOR_CATEGORIES } from "@/lib/indicators/catalog";
+import { findErrorHint } from "@/lib/indicators/error-hints";
 
 type TestResult =
   | { status: "idle" }
@@ -34,7 +35,14 @@ export function IndicatorEditorModal({ open, onClose, initial, bars, onSaved }: 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
+
   if (!open) return null;
+
+  function syncGutterScroll() {
+    if (gutterRef.current && textareaRef.current) gutterRef.current.scrollTop = textareaRef.current.scrollTop;
+  }
 
   async function runTest() {
     setTest({ status: "running" });
@@ -66,6 +74,8 @@ export function IndicatorEditorModal({ open, onClose, initial, bars, onSaved }: 
   }
 
   const canSave = name.trim().length > 0 && test.status === "ok" && !saving;
+  const lineCount = Math.max(source.split("\n").length, 1);
+  const hint = test.status === "error" ? findErrorHint(source) : null;
 
   return (
     <div
@@ -122,16 +132,39 @@ export function IndicatorEditorModal({ open, onClose, initial, bars, onSaved }: 
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Pine source
-            <textarea
-              value={source}
-              onChange={(e) => { setSource(e.target.value); setTest({ status: "idle" }); }}
-              spellCheck={false}
-              rows={12}
-              className="bg-secondary/40 border border-border px-2.5 py-2 text-xs font-mono text-foreground focus:outline-none focus:border-primary resize-y"
-            />
-          </label>
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <span>Pine source</span>
+            <div
+              className="flex border border-border bg-secondary/40 focus-within:border-primary"
+              style={{ fontFamily: "var(--font-mono, monospace)" }}
+            >
+              {/* Line-number gutter -- a real code-editor feel, kept in sync
+                  with the textarea's own scroll position. PineTS's own
+                  errors carry no Pine-source line/column (confirmed: a
+                  ReferenceError or TypeError with no position data), so this
+                  is honest about what it is: line numbers for the text as
+                  written, not a marker pointing at the failing line -- that
+                  data doesn't exist to point with. */}
+              <div
+                ref={gutterRef}
+                aria-hidden="true"
+                className="select-none text-right py-2 pl-2 pr-2 text-[11px] text-muted-foreground/50 overflow-hidden shrink-0"
+                style={{ lineHeight: "1.5" }}
+              >
+                {Array.from({ length: lineCount }, (_, i) => <div key={i}>{i + 1}</div>)}
+              </div>
+              <textarea
+                ref={textareaRef}
+                value={source}
+                onChange={(e) => { setSource(e.target.value); setTest({ status: "idle" }); }}
+                onScroll={syncGutterScroll}
+                spellCheck={false}
+                rows={14}
+                className="flex-1 min-w-0 bg-transparent px-2.5 py-2 text-[11px] text-foreground focus:outline-none resize-y"
+                style={{ lineHeight: "1.5" }}
+              />
+            </div>
+          </div>
 
           <div className="flex items-center gap-2">
             <button
@@ -146,10 +179,29 @@ export function IndicatorEditorModal({ open, onClose, initial, bars, onSaved }: 
                 ✓ Ran cleanly — {test.plotNames.length} plot{test.plotNames.length === 1 ? "" : "s"}: {test.plotNames.join(", ")}
               </span>
             )}
-            {test.status === "error" && (
-              <span className="text-xs" style={{ color: "var(--sell)" }}>✗ {test.message}</span>
-            )}
           </div>
+
+          {test.status === "error" && (
+            <div
+              role="alert"
+              className="border px-3 py-2.5 flex flex-col gap-1.5"
+              style={{
+                borderColor: "color-mix(in oklch, var(--sell) 35%, var(--border))",
+                background: "color-mix(in oklch, var(--sell) 6%, transparent)",
+              }}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--sell)" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                Script Error
+              </div>
+              <p className="text-xs whitespace-pre-wrap wrap-break-word text-foreground" style={{ fontFamily: "var(--font-mono, monospace)" }}>
+                {test.message}
+              </p>
+              {hint && <p className="text-[11px] text-muted-foreground pt-1.5 border-t border-border/50">{hint}</p>}
+            </div>
+          )}
 
           {saveError && <p className="text-xs" style={{ color: "var(--sell)" }}>{saveError}</p>}
         </div>
