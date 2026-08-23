@@ -1,4 +1,4 @@
-import { createChart, createSeriesMarkers, CandlestickSeries, HistogramSeries, TickMarkType, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type ISeriesPrimitive, type IPriceLine, type SeriesType, type Time } from "lightweight-charts";
+import { createChart, createSeriesMarkers, CandlestickSeries, HistogramSeries, TickMarkType, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type ISeriesPrimitive, type IPriceLine, type SeriesType, type Time, type LineWidth } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChatDrawing } from "@/lib/api/chat";
 import type { SavedDrawing } from "@/lib/api/charts";
@@ -8,7 +8,7 @@ import { createSegmentPrimitive, createRayPrimitive, createRectPrimitive, create
 import { createVolumeProfilePrimitive, type VolumeProfileHandle, type VolumeProfileMode } from "./volume-profile-primitive";
 import { computeVsaColors } from "./vsa-colors";
 import { INDICATOR_COLORS } from "./palette";
-import type { ChartAdapter, ChartMountOptions, ManualDrawKind, PaneRect, PineIndicatorSpec, PriceLevels } from "./types";
+import type { ChartAdapter, ChartMountOptions, ManualDrawKind, PaneRect, PineIndicatorSpec, PlotStyleOverride, PriceLevels } from "./types";
 
 export type { PineIndicatorSpec };
 
@@ -18,6 +18,14 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 function sameCalendarDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** LWC's LineWidth type is the literal union 1|2|3|4, not `number` -- a
+ *  style override comes from a settings form (arbitrary user input, or a
+ *  saved value from before this cap existed), so it's clamped and rounded
+ *  here rather than trusted. */
+function clampLineWidth(width: number): LineWidth {
+  return Math.min(4, Math.max(1, Math.round(width))) as LineWidth;
 }
 
 /** LWC picks a tick's TYPE by the overall visible range, not by what that
@@ -346,6 +354,13 @@ export class LightweightChartsAdapter implements ChartAdapter {
     return series ? (series.options() as { color?: string }).color : undefined;
   }
 
+  /** Test-only: the rendered color/lineWidth of this indicator's series
+   *  matching a given plot title. */
+  __test_seriesOptionsByTitle(id: string, title: string): { color?: string; lineWidth?: number; visible?: boolean } | undefined {
+    const series = this.pineSeries.get(id)?.find((s) => s.options().title === title);
+    return series ? (series.options() as { color?: string; lineWidth?: number; visible?: boolean }) : undefined;
+  }
+
   /** Test-only: how many plotshape()/plotchar() markers this indicator has. */
   __test_markerCount(id: string): number {
     return this.markerHandles.get(id)?.markers().length ?? 0;
@@ -353,6 +368,22 @@ export class LightweightChartsAdapter implements ChartAdapter {
 
   getIndicatorInputsMeta(id: string): PineInputMeta[] | undefined {
     return this.inputsMetaByIndicator.get(id);
+  }
+
+  getIndicatorPlotNames(id: string): string[] {
+    return (this.pineSeries.get(id) ?? [])
+      .map((s) => s.options().title)
+      .filter((title): title is string => !!title);
+  }
+
+  setIndicatorPlotStyle(id: string, title: string, style: PlotStyleOverride): void {
+    const target = this.pineSeries.get(id)?.find((s) => s.options().title === title);
+    if (!target) return;
+    const options: Record<string, unknown> = {};
+    if (style.color != null) options.color = style.color;
+    if (style.lineWidth != null) options.lineWidth = clampLineWidth(style.lineWidth);
+    if (style.visible != null) options.visible = style.visible;
+    target.applyOptions(options);
   }
 
   async attachPineIndicator(spec: PineIndicatorSpec): Promise<string | null> {
@@ -400,6 +431,17 @@ export class LightweightChartsAdapter implements ChartAdapter {
     if (allMarkers.length > 0) {
       const anchor = series[0] ?? this.candleSeries;
       if (anchor) this.markerHandles.set(spec.id, createSeriesMarkers(anchor, allMarkers));
+    }
+    // Style overrides are per-plot rendering settings, saved separately from
+    // the sandbox run itself -- re-apply them to the freshly-created series
+    // every attach (a fresh attach always gets fresh series with the default
+    // palette color, so this has to run every time, not just once).
+    if (spec.style) {
+      for (const s of series) {
+        const title = s.options().title;
+        const override = title ? spec.style[title] : undefined;
+        if (override) this.setIndicatorPlotStyle(spec.id, title!, override);
+      }
     }
     return spec.id;
   }

@@ -18,6 +18,16 @@ export interface SavedDrawing {
 
 /** An indicator attached via Pine -- there is no fixed catalog to look a
  *  name up in under the PineTS model, so the source itself is what's saved. */
+/** Per-plot appearance override -- TradingView's Style tab, one row per
+ *  real plot() the script produced. Pure rendering: unlike `params`,
+ *  changing this never re-runs the sandbox. `lineWidth` is capped at 4
+ *  (Lightweight Charts' own LineWidth type only accepts 1|2|3|4). */
+export interface PlotStyleOverride {
+  color?: string;
+  lineWidth?: number;
+  visible?: boolean;
+}
+
 export interface AttachedIndicator {
   id: string;
   source: string;
@@ -27,6 +37,14 @@ export interface AttachedIndicator {
    *  varId (e.g. { length: 50 }) -- TradingView-style per-instance settings.
    *  Absent/empty means "run with the script's own defaults". */
   params?: Record<string, unknown>;
+  /** Per-plot color/width/visibility, keyed by the plot's own title (e.g.
+   *  "Average"). Absent means "use the auto-assigned palette color". */
+  style?: Record<string, PlotStyleOverride>;
+  /** TradingView's Visibility tab, scoped to this app's real fixed interval
+   *  set (see lib/periods.ts's INTERVALS) rather than an open-ended
+   *  tick/second/custom range this app has no equivalent chart state for.
+   *  Both bounds inclusive; either absent means "no bound on that side". */
+  visibility?: { minInterval?: string; maxInterval?: string };
 }
 
 export interface ChartLayout {

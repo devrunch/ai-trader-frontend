@@ -4,6 +4,37 @@ export interface ChartPeriod {
   days: number;
 }
 
+/** Every distinct candle interval PERIODS uses, ordered coarsest-to-finest
+ *  is wrong for a min/max resolution picker -- TradingView's own Visibility
+ *  tab reads "minimum resolution" as the finest (smallest) bar and "maximum"
+ *  as the coarsest (largest), so this is ordered finest-first to match. This
+ *  app has no free-form tick/second/custom-range resolution the way
+ *  TradingView does -- these 5 are the only real intervals a chart here can
+ *  ever be on, so a min/max picker built from anything else would offer
+ *  options that don't correspond to a real chart state. */
+export const INTERVALS = ["1m", "5m", "30m", "1h", "1d"] as const;
+export type Interval = (typeof INTERVALS)[number];
+
+/** TradingView's Visibility tab: an indicator is visible only while the
+ *  chart's current interval falls within its saved [min, max] bound.
+ *  Either bound absent means "no limit on that side". An interval not in
+ *  INTERVALS (shouldn't happen -- PERIODS only ever produces these 5) fails
+ *  open rather than hiding something the range can't evaluate. */
+export function withinVisibilityRange(interval: string, visibility?: { minInterval?: string; maxInterval?: string }): boolean {
+  if (!visibility) return true;
+  const idx = INTERVALS.indexOf(interval as Interval);
+  if (idx === -1) return true;
+  if (visibility.minInterval) {
+    const minIdx = INTERVALS.indexOf(visibility.minInterval as Interval);
+    if (minIdx !== -1 && idx < minIdx) return false;
+  }
+  if (visibility.maxInterval) {
+    const maxIdx = INTERVALS.indexOf(visibility.maxInterval as Interval);
+    if (maxIdx !== -1 && idx > maxIdx) return false;
+  }
+  return true;
+}
+
 export const PERIODS: ChartPeriod[] = [
   // A separate "1m" period used to sit here (2 days of 1m bars) from before
   // 1D itself was 1-minute -- once 1D became "1m" too (below), it was showing

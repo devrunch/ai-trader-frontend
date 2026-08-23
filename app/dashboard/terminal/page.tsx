@@ -27,7 +27,8 @@ import {
   type SymbolMatch,
   type Quote,
 } from "@/lib/api";
-import { PERIODS } from "@/lib/periods";
+import { PERIODS, withinVisibilityRange } from "@/lib/periods";
+import type { PineInputMeta } from "@/lib/api/pine";
 import { useChartLayout } from "@/lib/use-chart-layout";
 import { useLiveQuote } from "@/lib/use-live-quote";
 import { useMarketStatus } from "@/lib/market-status";
@@ -42,7 +43,7 @@ import { PositionsPanel } from "@/components/terminal/PositionsPanel";
 import { Disclaimer } from "@/components/Disclaimer";
 import { IndicatorPickerModal, type PickerEntry } from "@/components/terminal/IndicatorPickerModal";
 import { IndicatorEditorModal } from "@/components/terminal/IndicatorEditorModal";
-import { IndicatorSettingsModal } from "@/components/terminal/IndicatorSettingsModal";
+import { IndicatorSettingsModal, type IndicatorSettingsResult } from "@/components/terminal/IndicatorSettingsModal";
 import { toAttachedIndicator, SPECIAL_INDICATORS, VOLUME_PROFILE_MODE_BY_ID, INDICATOR_NAME_BY_ID } from "@/lib/indicators/catalog";
 import { VSA_LEGEND } from "@/lib/chart-adapter/vsa-colors";
 import type { AttachedIndicator } from "@/lib/api/charts";
@@ -236,10 +237,10 @@ export default function TerminalPage() {
   // error anywhere. Found live when Supertrend silently failed to render.
   const [indicatorError, setIndicatorError] = useState<{ spec: AttachedIndicator; message: string } | null>(null);
 
-  // Bumped after every successful attach -- the settings gear's visibility
-  // (legendItems' hasSettings) reads chartRef.current.getIndicatorInputsMeta()
-  // imperatively, which nothing else would tell React to re-render for once
-  // the async attach resolves.
+  // Bumped after every successful attach, to re-run the effect below -- the
+  // settings gear's visibility depends on chartRef.current.getIndicatorInputsMeta()/
+  // getIndicatorPlotNames(), and nothing else would tell React a fresh
+  // attach's data is ready once the async call resolves.
   const [metaVersion, setMetaVersion] = useState(0);
   const attachOne = useCallback((chart: ChartAdapter, spec: AttachedIndicator) => {
     attachedPineRef.current.add(spec.id);
@@ -252,9 +253,31 @@ export default function TerminalPage() {
     });
   }, []);
 
-  const [settingsTarget, setSettingsTarget] = useState<{ id: string; label: string } | null>(null);
-  function handleSaveIndicatorParams(id: string, params: Record<string, unknown>) {
-    setIndicators((prev) => prev.map((i) => (i.id === id ? { ...i, params } : i)));
+  // Reading chartRef.current during render is unsafe (nothing guarantees a
+  // re-render when the ref's target data changes) -- this effect is the one
+  // place that reads it, and legendItems below reads the resulting STATE
+  // instead of calling the adapter directly.
+  const [hasSettingsById, setHasSettingsById] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const next: Record<string, boolean> = {};
+    for (const i of indicators) {
+      next[i.id] = (chart.getIndicatorInputsMeta(i.id)?.length ?? 0) > 0 || chart.getIndicatorPlotNames(i.id).length > 0;
+    }
+    setHasSettingsById(next);
+  }, [indicators, chartReady, metaVersion]);
+
+  const [settingsTarget, setSettingsTarget] = useState<{
+    id: string; label: string; plotNames: string[]; inputsMeta: PineInputMeta[];
+  } | null>(null);
+  function handleSaveIndicatorSettings(id: string, result: IndicatorSettingsResult) {
+    setIndicators((prev) => prev.map((i) => (i.id === id ? { ...i, ...result } : i)));
+    // Always reattach: params changed needs a real sandbox re-run; style and
+    // visibility don't, but reattach re-applies both anyway (attachPineIndicator
+    // applies spec.style to the fresh series -- see lightweight-charts-adapter.ts),
+    // and one extra sandbox call on an explicit Save click is not worth a
+    // second code path to skip it.
     reattachIfLive(id);
   }
 
@@ -343,18 +366,26 @@ export default function TerminalPage() {
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    for (const id of [...indicators.map((i) => i.id), ...volumeProfiles]) {
+    const pCfg = PERIODS.find((p) => p.label === period) ?? PERIODS[0];
+    for (const i of indicators) {
+      chart.setIndicatorVisible(i.id, !hiddenIds.has(i.id) && withinVisibilityRange(pCfg.interval, i.visibility));
+    }
+    for (const id of volumeProfiles) {
       chart.setIndicatorVisible(id, !hiddenIds.has(id));
     }
-  }, [hiddenIds, indicators, volumeProfiles, chartReady]);
+  }, [hiddenIds, indicators, volumeProfiles, chartReady, period]);
 
-  // Recomputed every render, including the one metaVersion triggers once an
-  // async attach resolves and getIndicatorInputsMeta actually has data.
-  void metaVersion;
   const legendItems: LegendItem[] = [
     ...indicators.map((i): LegendItem => ({
       id: i.id, label: i.label, hidden: hiddenIds.has(i.id),
-      hasSettings: (chartRef.current?.getIndicatorInputsMeta(i.id)?.length ?? 0) > 0,
+      // The gear covers Style/Visibility too, not just Inputs -- true
+      // whenever the indicator has real input.*() metadata OR at least one
+      // plotted line to style, which in practice is every
+      // successfully-attached Pine indicator. Read from hasSettingsById
+      // (state, set by the effect above), never chartRef.current directly
+      // here -- this runs during render, where reading a ref's live value
+      // is unsafe (nothing would guarantee a re-render when it changes).
+      hasSettings: hasSettingsById[i.id] ?? false,
     })),
     ...[...volumeProfiles].map((id): LegendItem => ({ id, label: INDICATOR_NAME_BY_ID[id] ?? id, hidden: hiddenIds.has(id) })),
     // VSA is a single boolean toggle with no separate "attached but hidden"
@@ -956,9 +987,12 @@ export default function TerminalPage() {
             open
             onClose={() => setSettingsTarget(null)}
             label={settingsTarget.label}
-            inputsMeta={chartRef.current?.getIndicatorInputsMeta(settingsTarget.id) ?? []}
+            inputsMeta={settingsTarget.inputsMeta}
+            plotNames={settingsTarget.plotNames}
             initialParams={indicators.find((i) => i.id === settingsTarget.id)?.params ?? {}}
-            onSave={(params) => handleSaveIndicatorParams(settingsTarget.id, params)}
+            initialStyle={indicators.find((i) => i.id === settingsTarget.id)?.style ?? {}}
+            initialVisibility={indicators.find((i) => i.id === settingsTarget.id)?.visibility ?? {}}
+            onSave={(result: IndicatorSettingsResult) => handleSaveIndicatorSettings(settingsTarget.id, result)}
           />
         )}
 
@@ -1048,7 +1082,14 @@ export default function TerminalPage() {
               onDelete={handleDeleteIndicator}
               onOpenSettings={(id) => {
                 const indicator = indicators.find((i) => i.id === id);
-                if (indicator) setSettingsTarget({ id, label: indicator.label });
+                const chart = chartRef.current;
+                if (indicator && chart) {
+                  setSettingsTarget({
+                    id, label: indicator.label,
+                    plotNames: chart.getIndicatorPlotNames(id),
+                    inputsMeta: chart.getIndicatorInputsMeta(id) ?? [],
+                  });
+                }
               }} />
           )}
           {indicatorError && (

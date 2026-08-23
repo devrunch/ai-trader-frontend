@@ -52,6 +52,20 @@ export interface PineIndicatorSpec {
    *  varId -- forwarded to runPineIndicator as inputOverrides. Absent means
    *  "run with the script's own defaults". */
   params?: Record<string, unknown>;
+  /** Per-plot color/width/visibility, keyed by plot title -- applied to
+   *  each matching series right after attach. Absent means "use the
+   *  auto-assigned palette color". */
+  style?: Record<string, PlotStyleOverride>;
+}
+
+/** TradingView's Style tab, one row per real plot() the script produced --
+ *  pure rendering, applying this never re-runs the sandbox. `lineWidth` is
+ *  capped at 4 (Lightweight Charts' own LineWidth type only accepts
+ *  1|2|3|4). */
+export interface PlotStyleOverride {
+  color?: string;
+  lineWidth?: number;
+  visible?: boolean;
 }
 
 /**
@@ -77,6 +91,18 @@ export interface ChartAdapter {
    *  attach -- what a settings form renders from. Undefined until the
    *  indicator has attached at least once, or if it has no inputs at all. */
   getIndicatorInputsMeta(id: string): PineInputMeta[] | undefined;
+
+  /** Real plot() titles this indicator's last successful attach produced
+   *  (e.g. ["Average", "Close"]) -- what the settings gear's Style tab
+   *  renders one row per. Boolean (plotshape()/plotchar()) plots are
+   *  markers, not series, and are excluded -- there is nothing to color or
+   *  widen for those. */
+  getIndicatorPlotNames(id: string): string[];
+
+  /** Recolors/rewidens/hides one plot's own series in place -- pure
+   *  rendering, no sandbox re-run. No-ops if `title` doesn't match a
+   *  currently-attached series (e.g. the script no longer produces it). */
+  setIndicatorPlotStyle(id: string, title: string, style: PlotStyleOverride): void;
 
   /** Attach/remove one Pine-authored indicator by source -- there is no
    *  fixed catalog to name against, so every indicator beyond the default

@@ -84,6 +84,62 @@ describe("LightweightChartsAdapter", () => {
     adapter.dispose();
   });
 
+  it("getIndicatorPlotNames lists real plot titles, and setIndicatorPlotStyle recolors/rewidens the matching series in place", async () => {
+    vi.mocked(runPineIndicator).mockResolvedValueOnce({
+      ok: true,
+      plots: {
+        Average: [{ time: 1767000900000, value: 100 }],
+        Close: [{ time: 1767000900000, value: 100.5 }],
+      },
+      error: null,
+    });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    ] });
+    await adapter.attachPineIndicator({ id: "gchan", source: "//@version=6\nindicator(\"t\")", label: "G-Trend", pane: "main" });
+
+    expect(adapter.getIndicatorPlotNames("gchan").sort()).toEqual(["Average", "Close"]);
+
+    adapter.setIndicatorPlotStyle("gchan", "Average", { color: "#ff0000", lineWidth: 4 });
+    expect(adapter.__test_seriesOptionsByTitle("gchan", "Average")?.color).toBe("#ff0000");
+    expect(adapter.__test_seriesOptionsByTitle("gchan", "Average")?.lineWidth).toBe(4);
+
+    // A width outside LWC's 1|2|3|4 union is clamped, not passed through raw
+    // (would otherwise be a runtime type violation against LWC's own API).
+    adapter.setIndicatorPlotStyle("gchan", "Average", { lineWidth: 99 });
+    expect(adapter.__test_seriesOptionsByTitle("gchan", "Average")?.lineWidth).toBe(4);
+
+    // A non-existent plot title is a silent no-op, not a throw -- the script
+    // may no longer produce that plot on a later attach.
+    expect(() => adapter.setIndicatorPlotStyle("gchan", "NoSuchPlot", { color: "#00ff00" })).not.toThrow();
+
+    adapter.dispose();
+  });
+
+  it("re-attaching an indicator with a saved style re-applies it to the fresh series", async () => {
+    vi.mocked(runPineIndicator).mockResolvedValue({
+      ok: true,
+      plots: { SMA: [{ time: 1767000900000, value: 100 }] },
+      error: null,
+    });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    ] });
+    await adapter.attachPineIndicator({
+      id: "sma1", source: "//@version=5\nindicator(\"t\")\nplot(ta.sma(close,5),\"SMA\")",
+      label: "SMA", pane: "main", style: { SMA: { color: "#123456", lineWidth: 3 } },
+    });
+    expect(adapter.__test_seriesOptionsByTitle("sma1", "SMA")?.color).toBe("#123456");
+    expect(adapter.__test_seriesOptionsByTitle("sma1", "SMA")?.lineWidth).toBe(3);
+    adapter.dispose();
+  });
+
   it("calls onLoadMore when the visible range approaches the oldest loaded bar", async () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
