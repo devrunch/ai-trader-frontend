@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from "react";
 import Link from "next/link";
 import {
   getHistorical,
@@ -105,6 +105,25 @@ const REALTIME_EXCHANGES = new Set(["NSE", "BSE", "MCX"]);
 
 const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$", MCX: "₹" };
 
+/** No real per-symbol logos available -- a deterministic colored monogram
+ *  per exchange is the same fallback TradingView itself uses for a symbol
+ *  without a real logo, and it's what actually differentiates rows at a
+ *  glance in a mixed-exchange result list. */
+const EXCHANGE_COLORS: Record<string, string> = {
+  NSE: "#3b82f6", BSE: "#8b5cf6", NASDAQ: "#f59e0b", NYSE: "#10b981", MCX: "#eab308",
+};
+
+function ExchangeBadge({ exchange }: { exchange: string }) {
+  return (
+    <span
+      className="w-6 h-6 shrink-0 flex items-center justify-center text-[10px] font-bold text-white rounded-sm"
+      style={{ backgroundColor: EXCHANGE_COLORS[exchange] ?? "#6b7280" }}
+    >
+      {exchange[0]}
+    </span>
+  );
+}
+
 function fromApiSignal(s: ApiSignal): DisplaySignal {
   return {
     direction: s.direction, confidence: s.confidence,
@@ -184,6 +203,14 @@ export default function TerminalPage() {
   const [searchOpen, setSearchOpen]   = useState(false);
   /** Which exchange "Load anyway" jumps to when no live match covers it. */
   const [searchExchange, setSearchExchange] = useState<string>("NSE");
+  /** Which exchange the results list is filtered to -- a different job from
+   *  searchExchange above (that one only steers the raw-symbol fallback
+   *  row), "ALL" shows every match across every exchange one search call
+   *  already returned. */
+  const [resultFilter, setResultFilter] = useState<string>("ALL");
+  /** Keyboard-selected row index into the flat visible list (matches, or
+   *  the fallback row, or the watchlist) -- -1 means nothing highlighted. */
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   /* Real symbol search — company name or ticker, across every exchange this
      app can chart, each result already carrying its own correct exchange so
@@ -215,6 +242,20 @@ export default function TerminalPage() {
 
     return () => { alive = false; clearTimeout(timer); };
   }, [searchQuery]);
+
+  // The highlighted row must not survive a change to what's actually being
+  // shown -- a stale index from a longer list could point past the end of a
+  // shorter one, or land on an unrelated row after the filter/query changes.
+  // Adjusting state during render (not inside an effect) is the pattern
+  // React itself recommends for this: comparing against the last-seen key
+  // and resetting synchronously avoids the extra commit+effect round trip
+  // a useEffect version of this would cost on every keystroke.
+  const searchListKey = `${searchOpen}:${resultFilter}:${searchQuery}`;
+  const [prevSearchListKey, setPrevSearchListKey] = useState(searchListKey);
+  if (searchListKey !== prevSearchListKey) {
+    setPrevSearchListKey(searchListKey);
+    setHighlightedIndex(0);
+  }
 
   const [prefill, setPrefill] = useState<OrderPrefill | null>(null);
 
@@ -735,6 +776,39 @@ export default function TerminalPage() {
   const activeInWatchlist = watchlist.some(w => w.symbol === activeSymbol && w.exchange === activeExchange);
   const watchlistFull = watchlist.length >= MAX_WATCHLIST_SIZE;
 
+  // Search modal's own derived view -- not state itself, just a projection
+  // over searchQuery/symbolMatches/resultFilter/watchlist, recomputed each
+  // render so keyboard nav (below) and the JSX render from one shared list.
+  const filteredMatches = resultFilter === "ALL" ? symbolMatches : symbolMatches.filter(m => m.exchange === resultFilter);
+  type SearchListItem =
+    | { kind: "match"; match: SymbolMatch }
+    | { kind: "fallback" }
+    | { kind: "watchlist"; item: ApiWatchlistItem };
+  const visibleItems: SearchListItem[] = q
+    ? [...filteredMatches.map((match): SearchListItem => ({ kind: "match", match })), { kind: "fallback" }]
+    : watchlist.map((item): SearchListItem => ({ kind: "watchlist", item }));
+
+  function runSearchItem(item: SearchListItem) {
+    if (item.kind === "match") selectSymbol(item.match.symbol, item.match.exchange);
+    else if (item.kind === "fallback") selectSymbol(q, searchExchange);
+    else selectSymbol(item.item.symbol, item.item.exchange);
+  }
+
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") { setSearchOpen(false); return; }
+    if (visibleItems.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex(i => Math.min(i + 1, visibleItems.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex(i => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      runSearchItem(visibleItems[highlightedIndex] ?? visibleItems[0]);
+    }
+  }
+
 
   return (
     <>
@@ -782,7 +856,7 @@ export default function TerminalPage() {
             onClick={() => setSearchOpen(false)}
           >
             <div
-              className="bg-card border border-border w-full max-w-md max-h-[70vh] flex flex-col"
+              className="bg-card border border-border w-full max-w-xl max-h-[75vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
@@ -792,6 +866,7 @@ export default function TerminalPage() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
                   placeholder="Search symbol…"
                   aria-label="Search symbol"
                   className="flex-1 min-w-0 text-sm text-foreground placeholder-muted-foreground focus:outline-none bg-transparent"
@@ -800,6 +875,26 @@ export default function TerminalPage() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
                 </button>
               </div>
+              {/* Filter chips -- filters the live results actually shown below,
+                  distinct from the exchange picker further down (that one only
+                  steers what "Load anyway" resolves an unmatched symbol on). */}
+              {q && (
+                <div className="flex gap-1 px-3 py-2 border-b border-border">
+                  {["ALL", ...SEARCH_EXCHANGES].map((ex) => (
+                    <button
+                      key={ex}
+                      onClick={() => setResultFilter(ex)}
+                      className={`px-2 py-0.5 text-[10px] font-mono font-semibold border transition-colors ${
+                        resultFilter === ex
+                          ? "border-primary text-link bg-primary/10"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="overflow-y-auto">
               {q ? (
                 <>
@@ -810,28 +905,38 @@ export default function TerminalPage() {
                   {searchingSymbols && symbolMatches.length === 0 && (
                     <div className="px-3 py-3 text-xs text-muted-foreground text-center">Searching…</div>
                   )}
-                  {symbolMatches.map((m) => (
+                  {filteredMatches.map((m, i) => (
                     <button
                       key={`${m.symbol}-${m.exchange}`}
                       onClick={() => selectSymbol(m.symbol, m.exchange)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary transition-colors"
+                      onMouseEnter={() => setHighlightedIndex(i)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
+                        i === highlightedIndex ? "bg-secondary" : "hover:bg-secondary"
+                      }`}
                     >
+                      <ExchangeBadge exchange={m.exchange} />
                       <span className="text-sm font-bold shrink-0">{m.symbol}</span>
                       <span className="text-xs text-muted-foreground truncate min-w-0">{m.name}</span>
-                      <span className="ml-auto text-[10px] text-muted-foreground font-mono shrink-0">{m.exchange}</span>
+                      {m.exchange === "MCX" && (
+                        <span className="ml-auto text-[9px] text-muted-foreground font-mono border border-border px-1 shrink-0">FUT</span>
+                      )}
+                      <span className={`text-[10px] text-muted-foreground font-mono shrink-0 ${m.exchange === "MCX" ? "" : "ml-auto"}`}>{m.exchange}</span>
                     </button>
                   ))}
 
                   {/* Fallback, always available: the live search is a scraped
                       vendor endpoint and will occasionally miss something real
                       — never block the user behind it finding a match. */}
-                  <div className={symbolMatches.length > 0 || searchingSymbols ? "border-t border-border" : ""}>
+                  <div className={filteredMatches.length > 0 || searchingSymbols ? "border-t border-border" : ""}>
                     <button onClick={() => selectSymbol(q, searchExchange)}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-primary/10 transition-colors">
+                      onMouseEnter={() => setHighlightedIndex(filteredMatches.length)}
+                      className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
+                        highlightedIndex === filteredMatches.length ? "bg-primary/10" : "hover:bg-primary/10"
+                      }`}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                       <span className="text-sm font-bold">{q}</span>
                       <span className="text-[10px] text-muted-foreground font-mono">
-                        {symbolMatches.length > 0 ? "— not listed above? try" : "on"} {searchExchange}
+                        {filteredMatches.length > 0 ? "— not listed above? try" : "on"} {searchExchange}
                       </span>
                     </button>
                     <div className="flex gap-1 px-3 pb-2.5">
@@ -862,11 +967,18 @@ export default function TerminalPage() {
                     <div className="px-3 py-3 text-xs text-muted-foreground text-center">
                       Empty — type a company name or ticker above.
                     </div>
-                  ) : watchlist.map(w => {
+                  ) : watchlist.map((w, i) => {
                     const sq = suggestQuotes[w.symbol];
                     return (
-                      <div key={`${w.symbol}-${w.exchange}`} className="w-full flex items-center justify-between px-3 py-2 hover:bg-secondary transition-colors group">
-                        <button onClick={() => selectSymbol(w.symbol, w.exchange)} className="flex-1 text-left">
+                      <div
+                        key={`${w.symbol}-${w.exchange}`}
+                        onMouseEnter={() => setHighlightedIndex(i)}
+                        className={`w-full flex items-center justify-between px-3 py-2 transition-colors group ${
+                          i === highlightedIndex ? "bg-secondary" : "hover:bg-secondary"
+                        }`}
+                      >
+                        <button onClick={() => selectSymbol(w.symbol, w.exchange)} className="flex-1 flex items-center gap-2 text-left">
+                          <ExchangeBadge exchange={w.exchange} />
                           <span className="text-sm font-bold">{w.symbol}</span>
                           <span className="text-[10px] text-muted-foreground ml-1.5 font-mono">{w.exchange}</span>
                         </button>
