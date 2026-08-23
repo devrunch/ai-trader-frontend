@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { createChart } from "lightweight-charts";
 import { attachPinePlotsToPane } from "./pine-render";
-import type { PinePlotPoint } from "@/lib/api/pine";
+import type { PineFillSpec, PinePlotPoint } from "@/lib/api/pine";
 
 // PineTS's own per-point time, in ms -- ms/1000 must land on the same
 // second as the fixture's other tests use in seconds (1767000900 etc).
@@ -206,6 +206,37 @@ describe("attachPinePlotsToPane", () => {
     expect(series).toHaveLength(1); // the numeric "Average" line
     expect(series[0].options().title).toBe("Average");
     expect(markerPlots).toHaveLength(1);
+    chart.remove();
+  });
+
+  it("reconstructs a real fill(p1, p2, color) from the two plots it names, without adding an extra series", () => {
+    const el = document.createElement("div"); document.body.appendChild(el);
+    const chart = createChart(el, { width: 400, height: 300, layout: { attributionLogo: false } });
+    // Both sides of the fill are real, independent plot() calls -- exactly
+    // how PineTS's FillHelper reports them (see PineFillSpec), never a
+    // "fill" entry in `plots` itself.
+    const plots = { Fast: pts(101, 102, 103), Slow: pts(99, 100, 101) };
+    const fills: PineFillSpec[] = [{
+      name: "fill", plot1: "Fast", plot2: "Slow",
+      colors: [
+        { time: 1767000900000, color: "#16c78426" },
+        { time: 1767000960000, color: "#16c78426" },
+        { time: 1767001020000, color: "#16c78426" },
+      ],
+    }];
+
+    const { series } = attachPinePlotsToPane(chart, 0, plots, undefined, 0, fills);
+    expect(series).toHaveLength(2); // just Fast and Slow -- the fill itself is a primitive, not a series
+    chart.remove();
+  });
+
+  it("skips a fill() referencing a plot that never rendered, instead of guessing", () => {
+    const el = document.createElement("div"); document.body.appendChild(el);
+    const chart = createChart(el, { width: 400, height: 300, layout: { attributionLogo: false } });
+    const plots = { Fast: pts(101, 102, 103) }; // "Slow" was never a real plot here
+    const fills: PineFillSpec[] = [{ name: "fill", plot1: "Fast", plot2: "Slow", colors: [] }];
+
+    expect(() => attachPinePlotsToPane(chart, 0, plots, undefined, 0, fills)).not.toThrow();
     chart.remove();
   });
 });

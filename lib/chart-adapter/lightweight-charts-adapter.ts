@@ -366,7 +366,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
     // several of its own lines (MACD's MACD/Signal) cycles forward from this
     // starting index, one shared palette rather than shades of one hue.
     const colorIndex = this.pineSeries.size % INDICATOR_COLORS.length;
-    const { series, markerPlots } = attachPinePlotsToPane(this.chart, paneIndex, result.plots, priceScaleId, colorIndex);
+    const { series, markerPlots } = attachPinePlotsToPane(this.chart, paneIndex, result.plots, priceScaleId, colorIndex, result.fills ?? undefined);
     if (priceScaleId) this.chart.priceScale(priceScaleId).applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     this.pineSeries.set(spec.id, series);
     // plotshape()/plotchar() (e.g. a script's own Buy/Sell signals) anchor

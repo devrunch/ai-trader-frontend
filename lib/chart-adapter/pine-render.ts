@@ -1,5 +1,5 @@
 import { HistogramSeries, LineSeries, type IChartApi, type ISeriesApi, type SeriesMarker, type SeriesType, type Time, type UTCTimestamp } from "lightweight-charts";
-import type { PinePlotPoint } from "@/lib/api/pine";
+import type { PineFillSpec, PinePlotPoint } from "@/lib/api/pine";
 import { INDICATOR_COLORS } from "./palette";
 import { createBandFillPrimitive, type DrawPoint } from "./drawing-primitives";
 
@@ -111,11 +111,15 @@ function buildSeriesMarkers(name: string, points: PinePlotPoint[], fallbackColor
  * function owns, not something PineTS's output distinguishes on its own
  * (its plots object carries no type metadata beyond the title string). A
  * boolean-valued plot (plotshape()/plotchar()) becomes marker data instead
- * of a series -- see buildSeriesMarkers.
+ * of a series -- see buildSeriesMarkers. A real Pine fill(p1, p2, color)
+ * call is reconstructed from `fills` -- PineTS never gives a fill a real
+ * per-bar value, only which two other plots it fills between (see
+ * PineFillSpec), so the actual boundary data comes from those plots'
+ * regular entries in `plots`, which this function already renders as their
+ * own lines.
  *
- * Real Pine fill()/bgcolor() are a genuine PineTS gap (confirmed against
- * the real package: fill() registers its color but never computes real
- * per-bar values) -- not something this function can render regardless.
+ * bgcolor() (a real background-shading gap, separate from fill()) is not
+ * attempted here.
  */
 export function attachPinePlotsToPane(
   chart: IChartApi,
@@ -123,6 +127,7 @@ export function attachPinePlotsToPane(
   plots: Record<string, PinePlotPoint[]>,
   priceScaleId?: string,
   colorIndex?: number,
+  fills?: PineFillSpec[],
 ): { series: ISeriesApi<SeriesType>[]; markerPlots: PineMarkerPlot[] } {
   const out: ISeriesApi<SeriesType>[] = [];
   const markerPlots: PineMarkerPlot[] = [];
@@ -210,6 +215,29 @@ export function attachPinePlotsToPane(
         : { a, b, colorAAboveB: `${bandColor ?? "#8b8a9e"}22` },
     );
     upperSeries.attachPrimitive(fill);
+  }
+
+  // A real fill(p1, p2, color): both plots it references were already
+  // rendered above as their own lines (that's what plot1/plot2 name) --
+  // reuse their real data and anchor the fill primitive to whichever of the
+  // two actually got a series here. A script can point a real color=na at
+  // one bar (drops that segment) or use a fill() the frontend can't resolve
+  // (a plot1/plot2 that never rendered, e.g. it was itself boolean) --
+  // skipped rather than guessed.
+  for (const spec of fills ?? []) {
+    const plot1 = plots[spec.plot1];
+    const plot2 = plots[spec.plot2];
+    if (!plot1 || !plot2) continue;
+    const anchor = out.find((s) => s.options().title === spec.plot1) ?? out.find((s) => s.options().title === spec.plot2);
+    if (!anchor) continue;
+    const { a, b } = alignedBandPoints(plot1, plot2);
+    const colorByTime = new Map(spec.colors.filter((c) => c.color).map((c) => [Math.floor(c.time / 1000), c.color as string]));
+    const fill = createBandFillPrimitive({
+      a, b,
+      colorAAboveB: `${fallbackColor}22`, // only reached if a bar's own resolved color is missing
+      colorAt: (i) => colorByTime.get(a[i]?.time),
+    });
+    anchor.attachPrimitive(fill);
   }
 
   return { series: out, markerPlots };

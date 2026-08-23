@@ -16,9 +16,30 @@ export interface PinePlotPoint {
   value: number | boolean | null;
 }
 
+/** A real Pine fill(plot1, plot2, color) call. PineTS deliberately never
+ *  gives a fill a real per-bar numeric value (confirmed against the actual
+ *  package source, github.com/LuxAlgo/PineTS -- FillHelper always pushes
+ *  {value: null}) -- what it gives instead is which two OTHER plots (by
+ *  name, matching a key in PineRunResult.plots) it fills between, plus the
+ *  real per-bar color the script resolved (which can depend on state that
+ *  has nothing to do with which plot is on top, e.g. a trend boolean, so it
+ *  is not something the renderer could reconstruct on its own). Gradient
+ *  fills (fill(p1, p2, top_value, bottom_value, top_color, bottom_color))
+ *  are a different, rarer PineTS code path with a different color model
+ *  (interpolated between two value thresholds, not one flat color per bar)
+ *  -- the sandbox worker excludes them from this list rather than render
+ *  them wrong. */
+export interface PineFillSpec {
+  name: string;
+  plot1: string;
+  plot2: string;
+  colors: { time: number; color: string | null }[];
+}
+
 export interface PineRunResult {
   ok: boolean;
   plots: Record<string, PinePlotPoint[]> | null;
+  fills?: PineFillSpec[] | null;
   error: string | null;
 }
 

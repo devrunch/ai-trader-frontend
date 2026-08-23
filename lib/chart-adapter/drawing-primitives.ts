@@ -120,16 +120,21 @@ export function createFibonacciPrimitive(opts: { points: [DrawPoint, DrawPoint];
 
 /** Fills the region between two bar-aligned plots (same length, same time
  *  axis, since both come from one PineTS run over the same bars) -- e.g.
- *  Bollinger/Keltner's Upper/Lower channel, or Ichimoku's Span A/Span B
- *  cloud. Colored per-segment by which side is on top there, so a one-tone
- *  channel (colorBAboveA omitted, same color both ways) and a two-tone
- *  cloud (Ichimoku's real bullish-green/bearish-red) are the same primitive
- *  with different color arguments, not two separate implementations. */
+ *  Bollinger/Keltner's Upper/Lower channel, Ichimoku's Span A/Span B cloud,
+ *  or a real Pine fill(p1, p2, color) call. Colored per-segment: by default,
+ *  by which side is on top there, so a one-tone channel (colorBAboveA
+ *  omitted, same color both ways) and a two-tone cloud (Ichimoku's real
+ *  bullish-green/bearish-red) are the same primitive with different color
+ *  arguments. `colorAt`, when given, overrides that entirely with a real
+ *  per-bar color a script resolved itself (a real fill()'s color can depend
+ *  on state that has nothing to do with which plot is higher -- e.g. a
+ *  separate trend boolean -- so guessing from position would be wrong). */
 export function createBandFillPrimitive(opts: {
   a: DrawPoint[];
   b: DrawPoint[];
   colorAAboveB: string;
   colorBAboveA?: string;
+  colorAt?: (index: number) => string | undefined;
 }): ISeriesPrimitive<Time> {
   const colorBAboveA = opts.colorBAboveA ?? opts.colorAAboveB;
   return makePrimitive((ctx, { series, chart }) => {
@@ -144,7 +149,8 @@ export function createBandFillPrimitive(opts: {
       const yb0 = series.priceToCoordinate(b0.value);
       const yb1 = series.priceToCoordinate(b1.value);
       if (x0 == null || x1 == null || ya0 == null || ya1 == null || yb0 == null || yb1 == null) continue;
-      ctx.fillStyle = a0.value + a1.value >= b0.value + b1.value ? opts.colorAAboveB : colorBAboveA;
+      ctx.fillStyle = opts.colorAt?.(i)
+        ?? (a0.value + a1.value >= b0.value + b1.value ? opts.colorAAboveB : colorBAboveA);
       ctx.beginPath();
       ctx.moveTo(x0, ya0);
       ctx.lineTo(x1, ya1);
