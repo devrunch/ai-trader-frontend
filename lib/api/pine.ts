@@ -4,10 +4,16 @@ import type { ApiOhlcBar } from "./market";
 /** One plotted point. `value` is null during an indicator's warmup period
  *  (e.g. ta.sma's first few bars before enough history exists) -- a real,
  *  expected state, not an error. `time` is PineTS's own per-point
- *  timestamp (ms epoch), not assumed to positionally match the input bars. */
+ *  timestamp (ms epoch), not assumed to positionally match the input bars.
+ *  `value` is a boolean, not a number, for a plotshape()/plotchar() call --
+ *  confirmed against the real sandbox: PineTS surfaces those as a plain
+ *  named plot carrying true on the bar the shape condition fired, false
+ *  otherwise, not as real shape/location/color metadata (which it drops
+ *  entirely). See pine-render.ts's buildSeriesMarkers for how that gets
+ *  turned into real chart markers. */
 export interface PinePlotPoint {
   time: number;
-  value: number | null;
+  value: number | boolean | null;
 }
 
 export interface PineRunResult {

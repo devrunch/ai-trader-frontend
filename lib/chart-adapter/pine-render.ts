@@ -1,7 +1,15 @@
-import { HistogramSeries, LineSeries, type IChartApi, type ISeriesApi, type SeriesType, type UTCTimestamp } from "lightweight-charts";
+import { HistogramSeries, LineSeries, type IChartApi, type ISeriesApi, type SeriesMarker, type SeriesType, type Time, type UTCTimestamp } from "lightweight-charts";
 import type { PinePlotPoint } from "@/lib/api/pine";
 import { INDICATOR_COLORS } from "./palette";
 import { createBandFillPrimitive, type DrawPoint } from "./drawing-primitives";
+
+/** A plotshape()/plotchar() plot -- carries no real shape/location/color of
+ *  its own on the wire (see PinePlotPoint), so this is what a caller needs
+ *  to actually place markers: which bars fired, ready for createSeriesMarkers. */
+export interface PineMarkerPlot {
+  name: string;
+  markers: SeriesMarker<Time>[];
+}
 
 const BAND_SUFFIX = /^(.*) (Upper|Lower)$/;
 
@@ -64,11 +72,36 @@ function alignedBandPoints(a: PinePlotPoint[], b: PinePlotPoint[]): { a: DrawPoi
   const n = Math.min(a.length, b.length);
   for (let i = 0; i < n; i++) {
     const av = a[i].value, bv = b[i].value;
-    if (av == null || bv == null || !Number.isFinite(av) || !Number.isFinite(bv)) continue;
+    if (typeof av !== "number" || typeof bv !== "number" || !Number.isFinite(av) || !Number.isFinite(bv)) continue;
     outA.push({ time: Math.floor(a[i].time / 1000), value: av });
     outB.push({ time: Math.floor(b[i].time / 1000), value: bv });
   }
   return { a: outA, b: outB };
+}
+
+function isBooleanPlot(points: PinePlotPoint[]): boolean {
+  return points.some((p) => typeof p.value === "boolean");
+}
+
+/** Builds real chart markers from a plotshape()/plotchar() boolean plot.
+ *  PineTS gives us nothing but true/false per bar (see PinePlotPoint) --
+ *  no real shape, location, color, or text survive from the script's own
+ *  plotshape() call. The belowBar/arrowUp/green vs aboveBar/arrowDown/red
+ *  split below is inferred from the plot's own title matching common
+ *  buy/sell naming (exactly what the "G-Channel" and similar scripts use)
+ *  -- an honest best guess at the author's intent, not a recovery of the
+ *  real args, which is why anything not matching falls back to a neutral
+ *  circle in the indicator's own color rather than guessing a direction. */
+function buildSeriesMarkers(name: string, points: PinePlotPoint[], fallbackColor: string): SeriesMarker<Time>[] {
+  const lower = name.toLowerCase();
+  const isBuy = /buy|long|\bup\b/.test(lower);
+  const isSell = /sell|short|\bdown\b/.test(lower);
+  const position = isSell ? "aboveBar" : "belowBar";
+  const shape = isBuy ? "arrowUp" : isSell ? "arrowDown" : "circle";
+  const color = isBuy ? "#16c784" : isSell ? "#f0525d" : fallbackColor;
+  return points
+    .filter((p) => p.value === true)
+    .map((p) => ({ time: Math.floor(p.time / 1000) as Time, position, shape, color, text: name }));
 }
 
 /**
@@ -76,11 +109,13 @@ function alignedBandPoints(a: PinePlotPoint[], b: PinePlotPoint[]): { a: DrawPoi
  * Charts series. A plain plot() becomes a LineSeries. Two plots named
  * "<x> Upper"/"<x> Lower" become a filled band -- a naming convention this
  * function owns, not something PineTS's output distinguishes on its own
- * (its plots object carries no type metadata beyond the title string).
+ * (its plots object carries no type metadata beyond the title string). A
+ * boolean-valued plot (plotshape()/plotchar()) becomes marker data instead
+ * of a series -- see buildSeriesMarkers.
  *
- * Real Pine fill()/plotshape()/bgcolor() need the Series Primitives API and
- * are follow-up work once this base case is proven (Task 7) -- not attempted
- * here.
+ * Real Pine fill()/bgcolor() are a genuine PineTS gap (confirmed against
+ * the real package: fill() registers its color but never computes real
+ * per-bar values) -- not something this function can render regardless.
  */
 export function attachPinePlotsToPane(
   chart: IChartApi,
@@ -88,11 +123,13 @@ export function attachPinePlotsToPane(
   plots: Record<string, PinePlotPoint[]>,
   priceScaleId?: string,
   colorIndex?: number,
-): ISeriesApi<SeriesType>[] {
+): { series: ISeriesApi<SeriesType>[]; markerPlots: PineMarkerPlot[] } {
   const out: ISeriesApi<SeriesType>[] = [];
+  const markerPlots: PineMarkerPlot[] = [];
   const bandPairs = new Map<string, { upper?: PinePlotPoint[]; lower?: PinePlotPoint[] }>();
   const plain: [string, PinePlotPoint[]][] = [];
   const scaleOpt = priceScaleId ? { priceScaleId } : {};
+  const fallbackColor = colorIndex == null ? "#8b8a9e" : INDICATOR_COLORS[colorIndex % INDICATOR_COLORS.length];
 
   // Every plain plot within this one indicator gets its own hue, cycled from
   // the same palette the legend swatches come from -- was previously one
@@ -118,6 +155,10 @@ export function attachPinePlotsToPane(
   }
 
   for (const [name, points] of plain) {
+    if (isBooleanPlot(points)) {
+      markerPlots.push({ name, markers: buildSeriesMarkers(name, points, fallbackColor) });
+      continue;
+    }
     if (name === "Histogram") {
       const series = chart.addSeries(HistogramSeries, { title: name, ...scaleOpt }, paneIndex);
       series.setData(toHistogramData(points));
@@ -171,5 +212,5 @@ export function attachPinePlotsToPane(
     upperSeries.attachPrimitive(fill);
   }
 
-  return out;
+  return { series: out, markerPlots };
 }

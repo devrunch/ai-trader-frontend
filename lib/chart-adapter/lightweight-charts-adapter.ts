@@ -1,4 +1,4 @@
-import { createChart, CandlestickSeries, HistogramSeries, TickMarkType, type IChartApi, type ISeriesApi, type ISeriesPrimitive, type IPriceLine, type SeriesType, type Time } from "lightweight-charts";
+import { createChart, createSeriesMarkers, CandlestickSeries, HistogramSeries, TickMarkType, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type ISeriesPrimitive, type IPriceLine, type SeriesType, type Time } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChatDrawing } from "@/lib/api/chat";
 import type { SavedDrawing } from "@/lib/api/charts";
@@ -69,6 +69,10 @@ export class LightweightChartsAdapter implements ChartAdapter {
   private candleSeries: ISeriesApi<"Candlestick"> | null = null;
   private volumeSeries: ISeriesApi<"Histogram"> | null = null;
   private pineSeries = new Map<string, ISeriesApi<SeriesType>[]>();
+  /** plotshape()/plotchar() output, one combined marker-plugin handle per
+   *  indicator id (all of that indicator's boolean plots merged into one
+   *  set of markers -- see attachPineIndicator). */
+  private markerHandles = new Map<string, ISeriesMarkersPluginApi<Time>>();
   private bars: ApiOhlcBar[] = [];
   private onLoadMoreFn?: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
   private loadingMore = false;
@@ -329,6 +333,11 @@ export class LightweightChartsAdapter implements ChartAdapter {
     return series ? (series.options() as { color?: string }).color : undefined;
   }
 
+  /** Test-only: how many plotshape()/plotchar() markers this indicator has. */
+  __test_markerCount(id: string): number {
+    return this.markerHandles.get(id)?.markers().length ?? 0;
+  }
+
   async attachPineIndicator(spec: PineIndicatorSpec): Promise<string | null> {
     const result = await runPineIndicator(spec.source, this.bars);
     // Previously returned spec.id here too -- indistinguishable from success,
@@ -357,9 +366,22 @@ export class LightweightChartsAdapter implements ChartAdapter {
     // several of its own lines (MACD's MACD/Signal) cycles forward from this
     // starting index, one shared palette rather than shades of one hue.
     const colorIndex = this.pineSeries.size % INDICATOR_COLORS.length;
-    const series = attachPinePlotsToPane(this.chart, paneIndex, result.plots, priceScaleId, colorIndex);
+    const { series, markerPlots } = attachPinePlotsToPane(this.chart, paneIndex, result.plots, priceScaleId, colorIndex);
     if (priceScaleId) this.chart.priceScale(priceScaleId).applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     this.pineSeries.set(spec.id, series);
+    // plotshape()/plotchar() (e.g. a script's own Buy/Sell signals) anchor
+    // to this indicator's own first series -- the normal case, a script
+    // like G-Channel pairs its signals with a real trend-line plot in the
+    // same attach. A script with ONLY boolean output (no numeric plot of
+    // its own) falls back to the main candle series; for a "sub" pane that
+    // means the markers land on the main pane instead of a sub pane that
+    // was never actually created (attachPinePlotsToPane made zero series,
+    // so no pane exists there to anchor to) -- a rare case, not a crash.
+    const allMarkers = markerPlots.flatMap((m) => m.markers);
+    if (allMarkers.length > 0) {
+      const anchor = series[0] ?? this.candleSeries;
+      if (anchor) this.markerHandles.set(spec.id, createSeriesMarkers(anchor, allMarkers));
+    }
     return spec.id;
   }
 
@@ -369,6 +391,11 @@ export class LightweightChartsAdapter implements ChartAdapter {
     // Captured before removal: once the series are gone there's nothing left
     // to look up the pane by.
     const paneIndex = series[0] ? this.paneIndexOfSeries(series[0]) : -1;
+    const markerHandle = this.markerHandles.get(id);
+    if (markerHandle) {
+      markerHandle.detach();
+      this.markerHandles.delete(id);
+    }
     for (const s of series) this.chart.removeSeries(s);
     this.pineSeries.delete(id);
     // Sub-pane indicators each own their pane exclusively (see

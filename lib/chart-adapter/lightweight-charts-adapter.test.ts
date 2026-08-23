@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
 import { LightweightChartsAdapter } from "./lightweight-charts-adapter";
+import { runPineIndicator } from "@/lib/api/pine";
 
 // Real shape: {time (ms), value} points, not raw numbers -- matches what
 // the actual sandbox returns (see app/pine_sandbox/worker.mjs).
@@ -363,6 +364,55 @@ describe("LightweightChartsAdapter", () => {
     const paneCountBefore = adapter.__test_paneCount();
     await adapter.attachPineIndicator({ id: "spread-vol", source: "//@version=5\nindicator(\"s\")\nplot(high-low,\"Spread\")", label: "Spread (on Volume)", pane: "volume" });
     expect(adapter.__test_paneCount()).toBe(paneCountBefore); // no new pane created
+    adapter.dispose();
+  });
+
+  it("attachPineIndicator turns a boolean plot into real chart markers (plotshape()-style signals)", async () => {
+    vi.mocked(runPineIndicator).mockResolvedValueOnce({
+      ok: true,
+      plots: {
+        Average: [
+          { time: 1767000900000, value: 100 },
+          { time: 1767000960000, value: 101 },
+          { time: 1767001020000, value: 102 },
+        ],
+        Buy: [
+          { time: 1767000900000, value: false },
+          { time: 1767000960000, value: true },
+          { time: 1767001020000, value: false },
+        ],
+      },
+      error: null,
+    });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      { time: 1767000960, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1200 },
+      { time: 1767001020, open: 101.5, high: 103, low: 101, close: 102.5, volume: 1300 },
+    ] });
+    await adapter.attachPineIndicator({ id: "gchan", source: "//@version=6\nindicator(\"G-Trend\")", label: "G-Trend", pane: "main" });
+    expect(adapter.__test_markerCount("gchan")).toBe(1); // only the one true bar
+    adapter.dispose();
+  });
+
+  it("removeIndicator detaches that indicator's markers, not just its series", async () => {
+    vi.mocked(runPineIndicator).mockResolvedValueOnce({
+      ok: true,
+      plots: { Buy: [{ time: 1767000900000, value: true }] },
+      error: null,
+    });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    ] });
+    await adapter.attachPineIndicator({ id: "sig", source: "//@version=6\nindicator(\"s\")", label: "Signal", pane: "main" });
+    expect(adapter.__test_markerCount("sig")).toBe(1);
+    adapter.removeIndicator("sig");
+    expect(adapter.__test_markerCount("sig")).toBe(0);
     adapter.dispose();
   });
 });
