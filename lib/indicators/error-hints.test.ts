@@ -2,19 +2,16 @@ import { describe, it, expect } from "vitest";
 import { findErrorHint } from "./error-hints";
 
 describe("findErrorHint", () => {
-  it("recognizes syminfo.* usage -- the real G-Channel script's failure mode", () => {
+  it("does not flag syminfo.* -- real syminfo support was added (see bars-provider.mjs)", () => {
     const source = 'alert("BUY Signal - " + syminfo.ticker, alert.freq_once_per_bar_close)';
-    expect(findErrorHint(source)).toMatch(/syminfo/);
+    expect(findErrorHint(source)).toBeNull();
   });
 
-  it("recognizes timeframe.*", () => {
-    expect(findErrorHint("plot(timeframe.multiplier)")).toMatch(/timeframe/);
+  it("does not flag timeframe.* -- resolves via the PineTS constructor's own tickerId/timeframe args", () => {
+    expect(findErrorHint("plot(timeframe.multiplier)")).toBeNull();
   });
 
   it("recognizes request.security()", () => {
-    // Not "syminfo.tickerid" here on purpose -- that would match the
-    // syminfo pattern first, which is correct first-match-wins behavior
-    // but would make this test assert the wrong thing.
     expect(findErrorHint('request.security("NASDAQ:AAPL", "D", close)')).toMatch(/request\.security/);
   });
 

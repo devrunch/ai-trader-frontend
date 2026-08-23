@@ -8,8 +8,6 @@
  *  error text. First match wins -- checked in the order a script is most
  *  likely to hit them. */
 const KNOWN_LIMITATIONS: { pattern: RegExp; hint: string }[] = [
-  { pattern: /\bsyminfo\.\w+/, hint: "syminfo.* isn't populated in this sandbox -- it runs on raw price bars only, with no live symbol/exchange context. If it's only used for display text (e.g. an alert message), try removing that reference." },
-  { pattern: /\btimeframe\.\w+/, hint: "timeframe.* isn't populated in this sandbox -- there's no live chart-interval context to read." },
   { pattern: /\brequest\.security\w*\s*\(/, hint: "request.security() needs a live multi-symbol/multi-timeframe data feed, which this sandbox doesn't provide." },
   { pattern: /\bstrategy\.\w+\s*\(/, hint: "strategy.*() functions need strategy mode -- this editor only runs scripts as indicators." },
   { pattern: /\bbgcolor\s*\(/, hint: "bgcolor() isn't supported yet -- background shading has no renderer on this chart." },

@@ -20,11 +20,13 @@ const DEFAULT_SOURCE = '//@version=5\nindicator("My Indicator")\nplot(ta.sma(clo
  *  was held to, now enforced in the UI instead of by hand before a commit.
  *  Editing the source after a successful test un-verifies it: the test
  *  result is for the exact text it ran, not whatever's in the box now. */
-export function IndicatorEditorModal({ open, onClose, initial, bars, onSaved }: {
+export function IndicatorEditorModal({ open, onClose, initial, bars, symbol, exchange, onSaved }: {
   open: boolean;
   onClose: () => void;
   initial?: ApiIndicator | null;
   bars: ApiOhlcBar[];
+  symbol: string;
+  exchange: string;
   onSaved: (indicator: ApiIndicator) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -50,7 +52,7 @@ export function IndicatorEditorModal({ open, onClose, initial, bars, onSaved }: 
       setTest({ status: "error", message: "No chart data loaded to test against -- open a symbol first." });
       return;
     }
-    const result = await runPineIndicator(source, bars);
+    const result = await runPineIndicator(source, bars, symbol, exchange);
     if (result.ok && result.plots) {
       setTest({ status: "ok", plotNames: Object.keys(result.plots) });
     } else {

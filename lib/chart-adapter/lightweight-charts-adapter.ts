@@ -86,6 +86,16 @@ export class LightweightChartsAdapter implements ChartAdapter {
   private fullscreenPane: ISeriesApi<SeriesType> | null = null;
   private preFullscreenStretchFactors: Map<ISeriesApi<SeriesType>, number> | null = null;
   private vsaEnabled = false;
+  /** Set via setActiveSymbol() -- lets attachPineIndicator pass real
+   *  syminfo to the sandbox (see bars-provider.mjs) instead of leaving
+   *  syminfo.* undefined for every script. */
+  private activeSymbol?: string;
+  private activeExchange?: string;
+
+  setActiveSymbol(symbol: string, exchange: string): void {
+    this.activeSymbol = symbol;
+    this.activeExchange = exchange;
+  }
 
   /** The volume histogram's own bar-by-bar data, colored plain up/down or by
    *  Volume Spread Analysis depending on the current toggle -- shared by
@@ -339,7 +349,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
   }
 
   async attachPineIndicator(spec: PineIndicatorSpec): Promise<string | null> {
-    const result = await runPineIndicator(spec.source, this.bars);
+    const result = await runPineIndicator(spec.source, this.bars, this.activeSymbol, this.activeExchange);
     // Previously returned spec.id here too -- indistinguishable from success,
     // so the caller that checks for a null return (and the one that doesn't)
     // both treated a failed sandbox run as a silent no-op attach.

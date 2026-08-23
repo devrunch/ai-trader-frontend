@@ -259,6 +259,16 @@ export default function TerminalPage() {
     attachedPineRef.current.delete(id);
   }, []);
 
+  // Pine indicators need to know which symbol/exchange they're running
+  // against so the sandbox can resolve syminfo.*/timeframe.* for real --
+  // must run before the attach effect below on the same commit (declared
+  // first: React runs effects in declaration order, and a fresh chart
+  // instance from a chartReady bump must have its symbol set before that
+  // effect's first attachPineIndicator call reads it off the adapter).
+  useEffect(() => {
+    chartRef.current?.setActiveSymbol(activeSymbol, activeExchange);
+  }, [activeSymbol, activeExchange, chartReady]);
+
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -904,6 +914,8 @@ export default function TerminalPage() {
           onClose={() => setEditorOpen(false)}
           initial={editingIndicator}
           bars={bars}
+          symbol={activeSymbol}
+          exchange={activeExchange}
           onSaved={(saved) => {
             setApiIndicators((prev) => {
               const exists = prev.some((i) => i.id === saved.id);

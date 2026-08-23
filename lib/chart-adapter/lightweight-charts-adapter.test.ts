@@ -45,6 +45,21 @@ describe("LightweightChartsAdapter", () => {
     adapter.dispose();
   });
 
+  it("setActiveSymbol threads symbol/exchange into runPineIndicator so the sandbox can resolve syminfo.*", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      { time: 1767000960, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1200 },
+      { time: 1767001020, open: 101.5, high: 103, low: 101, close: 102.5, volume: 1300 },
+    ] });
+    adapter.setActiveSymbol("RELIANCE", "NSE");
+    await adapter.attachPineIndicator({ id: "ind1", source: "//@version=5\nindicator(\"t\")\nplot(ta.sma(close,5))", label: "SMA5", pane: "main" });
+    expect(runPineIndicator).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), "RELIANCE", "NSE");
+    adapter.dispose();
+  });
+
   it("calls onLoadMore when the visible range approaches the oldest loaded bar", async () => {
     const el = document.createElement("div");
     document.body.appendChild(el);

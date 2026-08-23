@@ -61,6 +61,12 @@ export interface ChartAdapter {
   setPriceLevels(levels: PriceLevels): void;
   pushLiveTick(price: number): void;
 
+  /** Which symbol/exchange the chart is currently showing -- lets
+   *  attachPineIndicator pass real syminfo through to the sandbox so
+   *  scripts reading syminfo.* or timeframe.* resolve real values. Call
+   *  whenever the active symbol changes, before attaching any indicator. */
+  setActiveSymbol(symbol: string, exchange: string): void;
+
   /** Attach/remove one Pine-authored indicator by source -- there is no
    *  fixed catalog to name against, so every indicator beyond the default
    *  candle+volume view is attached individually. */

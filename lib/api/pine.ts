@@ -43,7 +43,7 @@ export interface PineRunResult {
   error: string | null;
 }
 
-export const runPineIndicator = (source: string, bars: ApiOhlcBar[]) =>
+export const runPineIndicator = (source: string, bars: ApiOhlcBar[], symbol?: string, exchange?: string) =>
   req<PineRunResult>("/api/pine/run", {
     method: "POST",
     body: JSON.stringify({
@@ -57,5 +57,11 @@ export const runPineIndicator = (source: string, bars: ApiOhlcBar[]) =>
       // caller.
       bars: bars.map((b) => ({ open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume, openTime: b.time * 1000 })),
       mode: "indicator",
+      // symbol/exchange (when known) let the sandbox wrap bars as a real
+      // PineTS IProvider instead of a raw array, so syminfo.*/timeframe.*
+      // resolve real values instead of leaving syminfo undefined -- see
+      // ai-trader-signals/app/pine_sandbox/bars-provider.mjs.
+      symbol,
+      exchange,
     }),
   });
