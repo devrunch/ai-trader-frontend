@@ -32,13 +32,37 @@ export interface CustomIndicatorSpec {
    * the chart needs an explicit pane to overlay on price vs. get its own. */
   pane: "main" | "sub";
 }
+/** One already-attached indicator's params changed, keyed by varId --
+ *  set_indicator_params (chart_indicators.py). Applied the same way the
+ *  settings gear's own Inputs tab applies a change: merge into the
+ *  matching AttachedIndicator's params, then reattach. */
+export interface IndicatorParamsChange {
+  id: string;
+  params: Record<string, unknown>;
+}
+/** One already-attached indicator's ENTIRE Pine source was replaced --
+ *  edit_indicator_source (chart_indicators.py). Validated against the real
+ *  sandbox server-side before this ever arrives. */
+export interface IndicatorSourceEdit {
+  id: string;
+  source: string;
+}
+/** What the agent changed about indicators already on the chart this turn
+ *  -- distinct from custom_indicators below, which is brand-new ones.
+ *  Reactive only: this never arrives unless the user asked for it in this
+ *  same turn. */
+export interface IndicatorChanges {
+  update?: IndicatorParamsChange[];
+  edit_source?: IndicatorSourceEdit[];
+  remove?: string[];
+}
 export interface ChatResults {
   strategy?: ChatStrategyResult;
   simulation?: ChatSimulationResult;
-  /** Agent asked to toggle indicators on the chart */
-  chart_indicators?: { add: string[]; remove: string[] };
   /** Agent authored one or more custom Pine indicators */
   custom_indicators?: CustomIndicatorSpec[];
+  /** Agent changed settings/source on, or removed, indicators already on the chart */
+  indicator_changes?: IndicatorChanges;
 }
 export interface ChatResponse {
   message: string;

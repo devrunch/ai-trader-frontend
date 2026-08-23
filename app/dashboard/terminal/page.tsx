@@ -24,6 +24,7 @@ import {
   type ApiIndicator,
   type ChatDrawing,
   type CustomIndicatorSpec,
+  type IndicatorChanges,
   type SymbolMatch,
   type Quote,
 } from "@/lib/api";
@@ -31,6 +32,7 @@ import { PERIODS, withinVisibilityRange } from "@/lib/periods";
 import type { PineInputMeta } from "@/lib/api/pine";
 import { useChartLayout } from "@/lib/use-chart-layout";
 import { useLiveQuote } from "@/lib/use-live-quote";
+import { useChartStateSync } from "@/lib/use-chart-state-sync";
 import { useMarketStatus } from "@/lib/market-status";
 import { CandlestickChart, type LegendItem } from "@/components/CandlestickChart";
 import type { ChartAdapter } from "@/lib/chart-adapter/types";
@@ -130,9 +132,18 @@ export default function TerminalPage() {
     const params = new URLSearchParams(window.location.search);
     const s = params.get("symbol");
     const e = params.get("exchange");
+    // react-hooks/set-state-in-effect wants this expressed as either a
+    // useMemo or a callback reacting to an external system's own change
+    // event -- neither fits: window.location is only readable client-side
+    // (see the hydration-mismatch comment above, a confirmed past bug), so
+    // a useMemo here would re-diverge from the server render the same way
+    // the old initializer did. This IS the React-documented pattern for
+    // "seed state from something only available after mount" -- the rule
+    // has no way to distinguish that from the sync-a-derived-value
+    // antipattern it actually targets.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (s) setActiveSymbol(s.toUpperCase());
     if (e) setActiveExchange(e.toUpperCase());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [period, setPeriod]                 = useState("1D");
   const [bars, setBars]                     = useState<ApiOhlcBar[]>([]);
@@ -268,6 +279,28 @@ export default function TerminalPage() {
     setHasSettingsById(next);
   }, [indicators, chartReady, metaVersion]);
 
+  /* Editing a custom indicator that's already on the chart: the diffing
+     effect below only reacts to an id entering/leaving `indicators`, not to
+     an existing id's own source changing, so a plain state update would
+     leave the OLD compiled series showing. Removing it from both the chart
+     and attachedPineRef first means the effect's next run treats the id as
+     newly-wanted and genuinely re-attaches with the edited source.
+
+     Declared before every caller below (handleSaveIndicatorSettings,
+     applyIndicatorChanges, the IndicatorEditorModal onSaved handler) on
+     purpose -- a forward reference to this useCallback from a function
+     declared above it is fine at runtime (JS closures resolve by the time
+     they're actually called), but broke React Compiler's ability to
+     preserve this memoization statically (confirmed: moving this above its
+     callers, with no other change, silenced the
+     react-hooks/preserve-manual-memoization diagnostic). */
+  const reattachIfLive = useCallback((id: string) => {
+    const chart = chartRef.current;
+    if (!chart || !attachedPineRef.current.has(id)) return;
+    chart.removeIndicator(id);
+    attachedPineRef.current.delete(id);
+  }, []);
+
   const [settingsTarget, setSettingsTarget] = useState<{
     id: string; label: string; plotNames: string[]; inputsMeta: PineInputMeta[];
   } | null>(null);
@@ -280,19 +313,6 @@ export default function TerminalPage() {
     // second code path to skip it.
     reattachIfLive(id);
   }
-
-  /* Editing a custom indicator that's already on the chart: the diffing
-     effect below only reacts to an id entering/leaving `indicators`, not to
-     an existing id's own source changing, so a plain state update would
-     leave the OLD compiled series showing. Removing it from both the chart
-     and attachedPineRef first means the effect's next run treats the id as
-     newly-wanted and genuinely re-attaches with the edited source. */
-  const reattachIfLive = useCallback((id: string) => {
-    const chart = chartRef.current;
-    if (!chart || !attachedPineRef.current.has(id)) return;
-    chart.removeIndicator(id);
-    attachedPineRef.current.delete(id);
-  }, []);
 
   // Pine indicators need to know which symbol/exchange they're running
   // against so the sandbox can resolve syminfo.*/timeframe.* for real --
@@ -374,6 +394,12 @@ export default function TerminalPage() {
       chart.setIndicatorVisible(id, !hiddenIds.has(id));
     }
   }, [hiddenIds, indicators, volumeProfiles, chartReady, period]);
+
+  // Real-time report of what's on the chart, so the chat agent's
+  // chart_indicators tools (list/set_indicator_params/edit_indicator_source/
+  // remove_chart_indicator) see live data instead of nothing at all -- see
+  // ai-trader-api's SignalsGateway and lib/use-chart-state-sync.ts.
+  useChartStateSync(indicators, (PERIODS.find((p) => p.label === period) ?? PERIODS[0]).interval);
 
   const legendItems: LegendItem[] = [
     ...indicators.map((i): LegendItem => ({
@@ -493,85 +519,58 @@ export default function TerminalPage() {
   }
 
   /**
-   * The agent's `chart_indicators` tool result -- add/remove BUILT-IN
-   * catalog names (e.g. "EMA"). Same root problem as the removed
-   * IndicatorSearchModal: this tool contract (ai-trader-signals'
-   * add_chart_indicator) is built around the retired klinecharts/diascript
-   * catalog and has no Pine equivalent yet. Task 9 rewrites
-   * generate_custom_indicator (the agent's Pine-AUTHORING tool) but not
-   * this one -- a separate, unscoped follow-up: either retire this tool
-   * server-side in favor of generate_custom_indicator entirely, or give it
-   * a real Pine-source-producing replacement. Left a documented no-op
-   * rather than fabricating fake AttachedIndicator objects from bare
-   * catalog names, which would silently "succeed" while attaching nothing
-   * real.
+   * The agent changed settings/source on, or removed, indicators already
+   * on the chart -- set_indicator_params/edit_indicator_source/
+   * remove_chart_indicator (chart_indicators.py). Reactive only: this only
+   * ever arrives from a turn the user themself started (see chat_state
+   * threading in useChartStateSync below for how the agent even knows
+   * what's attached to change in the first place).
+   *
+   * Applies through exactly the same mechanism the settings gear itself
+   * uses: merge the change into `indicators` state, then reattachIfLive so
+   * the diffing effect picks up the new params/source on its next pass.
    */
-  function applyChartIndicators(_change: { add?: string[]; remove?: string[] }) {
-    // Intentionally does nothing -- see comment above.
+  function applyIndicatorChanges(changes: IndicatorChanges) {
+    const removedIds = new Set(changes.remove ?? []);
+    setIndicators((prev) => {
+      let next = prev;
+      if (removedIds.size > 0) {
+        next = next.filter((i) => !removedIds.has(i.id));
+      }
+      for (const { id, params } of changes.update ?? []) {
+        next = next.map((i) => (i.id === id ? { ...i, params } : i));
+      }
+      for (const { id, source } of changes.edit_source ?? []) {
+        next = next.map((i) => (i.id === id ? { ...i, source } : i));
+      }
+      return next;
+    });
+    for (const { id } of changes.update ?? []) reattachIfLive(id);
+    for (const { id } of changes.edit_source ?? []) reattachIfLive(id);
   }
 
-  /* The agent can author brand-new Pine indicators at runtime — unlike
+  /* The agent can author brand-new Pine indicators at runtime -- unlike
      applyChartIndicators above (a stale, built-in-catalog-only tool), these
      have no catalog to be in at all under the Pine model; each is attached
      individually by its own source.
 
-     The specs themselves live in state, not just a ref: CandlestickChart's
-     chart-init effect disposes and recreates the chart instance on an
-     ordinary symbol/exchange/period switch or a data retry (its effect
-     depends on `bars`), which wipes every indicator off the new instance.
-     Built-in indicators survive that because they live in `indicators` state
-     and get re-applied by an effect keyed on chartReady; a ref-only "already
-     attached" bookkeeping would survive the same rebuild with stale state
-     pointing at a chart that's gone, permanently losing the indicator. */
-  const [customIndicatorSpecs, setCustomIndicatorSpecs] = useState<CustomIndicatorSpec[]>([]);
+     CustomIndicatorSpec (id/source/label/pane: "main"|"sub") is a strict
+     subset of AttachedIndicator's own shape -- previously kept in its own
+     parallel state (customIndicatorSpecs) with its own dedicated attach
+     effect duplicating what the indicators-diffing effect below already
+     does. That meant an agent-authored indicator was invisible to the
+     settings gear, the save/restore layout (useChartLayout only ever read
+     `indicators` -- an agent-made indicator silently vanished on reload),
+     and (once built) the agent's own set_indicator_params/style/visibility
+     tools. Folding straight into `indicators` fixes all of that at once:
+     one list, one attach effect, one settings gear, one save path. */
   function applyCustomIndicators(specs: CustomIndicatorSpec[]) {
-    setCustomIndicatorSpecs(prev => {
-      const byId = new Map(prev.map(s => [s.id, s] as const));
-      for (const spec of specs) byId.set(spec.id, spec);
+    setIndicators((prev) => {
+      const byId = new Map(prev.map((i) => [i.id, i] as const));
+      for (const spec of specs) byId.set(spec.id, { ...byId.get(spec.id), ...spec });
       return Array.from(byId.values());
     });
   }
-
-  /* Registers + attaches every known custom indicator against whichever chart
-     instance currently exists. Keyed on chartReady (bumped in onReady below,
-     on every fresh `init(el)`) as well as the specs, so a chart rebuild
-     re-attaches everything instead of leaving the new instance blank.
-
-     `attached` tracks name -> id per CHART INSTANCE (reset whenever the
-     instance changes, same shape as CandlestickChart's own appliedRef) so a
-     later spec arriving on the SAME chart doesn't recreate a pane that's
-     already there — createIndicator has no "already attached" check of its
-     own, it hands back a fresh id on every call. The id is checked for
-     truthiness before being counted as attached, matching CandlestickChart's
-     own pattern, and each spec gets its own try/catch — one malformed
-     formula must not stop the rest of the batch from rendering. */
-  const attachedRef = useRef<{ chart: ChartAdapter | null; ids: Map<string, string> }>({ chart: null, ids: new Map() });
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart || customIndicatorSpecs.length === 0) return;
-    if (attachedRef.current.chart !== chart) attachedRef.current = { chart, ids: new Map() };
-    const attached = attachedRef.current.ids;
-    let cancelled = false;
-
-    (async () => {
-      for (const spec of customIndicatorSpecs) {
-        if (attached.has(spec.id)) continue;
-        try {
-          const id = await chart.attachPineIndicator(spec);
-          if (cancelled) return;
-          if (id) {
-            attached.set(spec.id, id);
-          } else {
-            console.warn(`Custom indicator "${spec.label}" did not attach to the chart`);
-          }
-        } catch (err) {
-          console.error(`Failed to render custom indicator "${spec.label}"`, err);
-        }
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [customIndicatorSpecs, chartReady]);
 
   /* Watchlist — fetched on mount, drives the search suggestions.
      Every setState sits in a promise callback: a synchronous one inside an
@@ -1179,7 +1178,7 @@ export default function TerminalPage() {
                 exchange={activeExchange}
                 onDrawings={applyDrawings}
                 onRemoveDrawings={removeTurnDrawings}
-                onIndicators={applyChartIndicators}
+                onIndicatorChanges={applyIndicatorChanges}
                 onCustomIndicator={applyCustomIndicators}
                 onUseTrade={({ side, price, turnId }) => {
                   // The turn id travels with the prefill, so the order records

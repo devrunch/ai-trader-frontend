@@ -15,7 +15,12 @@ import { API_BASE_URL } from "@/lib/api/client";
  */
 let sharedSocket: Socket | null = null;
 
-function getSocket(): Socket {
+/** The one Socket.IO connection this app ever opens -- created on first use
+ *  by whichever hook needs it first (this file's useLiveQuote, or
+ *  use-chart-state-sync.ts's useChartStateSync), shared for the app's whole
+ *  lifetime. Exported so a second real-time feature multiplexes onto the
+ *  same connection instead of opening its own. */
+export function getSocket(): Socket {
   if (!sharedSocket) {
     sharedSocket = io(API_BASE_URL, { withCredentials: true });
   }

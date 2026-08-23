@@ -7,6 +7,7 @@ import {
   type ChatDrawing,
   type ChatResults,
   type CustomIndicatorSpec,
+  type IndicatorChanges,
 } from "@/lib/api";
 import { streamChat, type StreamedTurn } from "@/lib/chat-stream";
 import { AgentProgress } from "./AgentProgress";
@@ -30,10 +31,12 @@ export interface ChatPanelProps {
   onDrawings: (drawings: ChatDrawing[], turnId?: string) => void;
   /** Take one answer's marks back off the chart. */
   onRemoveDrawings?: (turnId: string) => void;
-  /** The agent asked to toggle chart indicators. */
-  onIndicators: (change: { add?: string[]; remove?: string[] }) => void;
   /** The agent authored one or more custom Pine indicators. */
   onCustomIndicator: (specs: CustomIndicatorSpec[]) => void;
+  /** The agent changed settings/source on, or removed, indicators already
+   *  on the chart -- reactive only, so this only ever fires from a turn
+   *  the user themself started. */
+  onIndicatorChanges?: (changes: IndicatorChanges) => void;
   /**
    * The user chose to act on a trade the agent worked through. Carries the turn
    * id, which is what lets the resulting order be traced back to this analysis.
@@ -50,7 +53,7 @@ export interface ChatPanelProps {
  * streamed turn, the live progress feed, and restoring the last conversation.
  */
 export function ChatPanel({
-  symbol, exchange, onDrawings, onRemoveDrawings, onIndicators, onCustomIndicator, onUseTrade,
+  symbol, exchange, onDrawings, onRemoveDrawings, onCustomIndicator, onIndicatorChanges, onUseTrade,
 }: ChatPanelProps) {
   const resetStorageKey = `chat-reset:${symbol}`;
   // A reset that happened before this mount (a page reload right after
@@ -135,11 +138,14 @@ export function ChatPanel({
   const applyResult = useCallback(
     (turn: StreamedTurn) => {
       onDrawings(turn.drawings ?? [], turn.turnId);
-      const indicators = (turn.results as ChatResults | undefined)?.chart_indicators;
-      if (indicators?.add?.length || indicators?.remove?.length) onIndicators(indicators);
 
       const customIndicators = (turn.results as ChatResults | undefined)?.custom_indicators;
       if (customIndicators?.length) onCustomIndicator(customIndicators);
+
+      const indicatorChanges = (turn.results as ChatResults | undefined)?.indicator_changes;
+      if (indicatorChanges?.update?.length || indicatorChanges?.edit_source?.length || indicatorChanges?.remove?.length) {
+        onIndicatorChanges?.(indicatorChanges);
+      }
 
       setMessages((m) => [
         ...m,
@@ -154,7 +160,7 @@ export function ChatPanel({
         },
       ]);
     },
-    [onDrawings, onIndicators, onCustomIndicator],
+    [onDrawings, onCustomIndicator, onIndicatorChanges],
   );
 
   function send() {
@@ -240,7 +246,15 @@ export function ChatPanel({
           </div>
         )}
 
-        <div aria-live="polite" aria-atomic="false" className="contents">
+        {/* No className="contents" here on purpose -- that made this div
+            invisible to layout, so its children (each message bubble)
+            became direct items of the parent's space-y-3 flex column,
+            putting the same 0.75rem gap between a user message and its own
+            reply as between anything else on the page. A real block with no
+            gap of its own collapses that to zero; the outer space-y-3 still
+            separates this whole message list from the "New chat" button
+            above and the progress box below. */}
+        <div aria-live="polite" aria-atomic="false">
           {messages.map((m, i) => (
             <ChatMessage
               key={m.turnId ? `${m.turnId}-${m.role}` : `m-${i}`}
