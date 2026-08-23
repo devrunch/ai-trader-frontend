@@ -228,8 +228,18 @@ export function attachPinePlotsToPane(
     const plot1 = plots[spec.plot1];
     const plot2 = plots[spec.plot2];
     if (!plot1 || !plot2) continue;
-    const anchor = out.find((s) => s.options().title === spec.plot1) ?? out.find((s) => s.options().title === spec.plot2);
+    const series1 = out.find((s) => s.options().title === spec.plot1);
+    const series2 = out.find((s) => s.options().title === spec.plot2);
+    const anchor = series1 ?? series2;
     if (!anchor) continue;
+    // The fill's own shaded band already carries the visual weight between
+    // these two lines -- at LWC's default line width both boundaries read
+    // as loud as the fill itself (confirmed live: G-Channel's Average/Close
+    // pair plus its fill looked like three overlapping signals instead of
+    // one filled channel). Thinning both boundary lines keeps the shaded
+    // area as the actual signal.
+    series1?.applyOptions({ lineWidth: 1 });
+    series2?.applyOptions({ lineWidth: 1 });
     const { a, b } = alignedBandPoints(plot1, plot2);
     const colorByTime = new Map(spec.colors.filter((c) => c.color).map((c) => [Math.floor(c.time / 1000), c.color as string]));
     const fill = createBandFillPrimitive({

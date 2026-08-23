@@ -56,7 +56,31 @@ describe("LightweightChartsAdapter", () => {
     ] });
     adapter.setActiveSymbol("RELIANCE", "NSE");
     await adapter.attachPineIndicator({ id: "ind1", source: "//@version=5\nindicator(\"t\")\nplot(ta.sma(close,5))", label: "SMA5", pane: "main" });
-    expect(runPineIndicator).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), "RELIANCE", "NSE");
+    expect(runPineIndicator).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), "RELIANCE", "NSE", undefined);
+    adapter.dispose();
+  });
+
+  it("spec.params threads through to runPineIndicator's inputOverrides, and getIndicatorInputsMeta exposes the sandbox's real input metadata", async () => {
+    vi.mocked(runPineIndicator).mockResolvedValueOnce({
+      ok: true,
+      plots: { SMA: [{ time: 1767000900000, value: 100 }] },
+      error: null,
+      inputsMeta: [{ type: "int", defval: 20, varId: "length", title: "Length", minval: 1 }],
+    });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    ] });
+    await adapter.attachPineIndicator({
+      id: "ind1", source: "//@version=5\nindicator(\"t\")\nlength = input.int(20)\nplot(ta.sma(close,length))",
+      label: "SMA", pane: "main", params: { length: 5 },
+    });
+    expect(runPineIndicator).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), undefined, undefined, { length: 5 });
+    expect(adapter.getIndicatorInputsMeta("ind1")).toEqual([{ type: "int", defval: 20, varId: "length", title: "Length", minval: 1 }]);
+    adapter.removeIndicator("ind1");
+    expect(adapter.getIndicatorInputsMeta("ind1")).toBeUndefined();
     adapter.dispose();
   });
 

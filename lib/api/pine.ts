@@ -36,14 +36,38 @@ export interface PineFillSpec {
   colors: { time: number; color: string | null }[];
 }
 
+/** One `input.*()` declaration parsed straight out of the script by real
+ *  PineTS (Indicator.getInputsMeta(), github.com/LuxAlgo/PineTS) -- what a
+ *  TradingView-style settings form renders from. `varId` is the script's
+ *  own variable name for this input (e.g. `length`) and is what a settings
+ *  override in PineRunOptions.inputOverrides gets keyed by -- more robust
+ *  than `title`, which a script can leave blank or duplicate. */
+export interface PineInputMeta {
+  type: "int" | "float" | "bool" | "string" | "source" | "color" | "enum" | "price" | "time" | "session" | "symbol" | "timeframe" | "text_area";
+  defval: unknown;
+  varId?: string;
+  title?: string;
+  minval?: number;
+  maxval?: number;
+  step?: number;
+  options?: unknown[];
+}
+
 export interface PineRunResult {
   ok: boolean;
   plots: Record<string, PinePlotPoint[]> | null;
   fills?: PineFillSpec[] | null;
   error: string | null;
+  inputsMeta?: PineInputMeta[];
 }
 
-export const runPineIndicator = (source: string, bars: ApiOhlcBar[], symbol?: string, exchange?: string) =>
+export const runPineIndicator = (
+  source: string,
+  bars: ApiOhlcBar[],
+  symbol?: string,
+  exchange?: string,
+  inputOverrides?: Record<string, unknown>,
+) =>
   req<PineRunResult>("/api/pine/run", {
     method: "POST",
     body: JSON.stringify({
@@ -63,5 +87,9 @@ export const runPineIndicator = (source: string, bars: ApiOhlcBar[], symbol?: st
       // ai-trader-signals/app/pine_sandbox/bars-provider.mjs.
       symbol,
       exchange,
+      // varId-keyed input.*() overrides -- applied through PineTS's own
+      // real Indicator.input proxy server-side (worker.mjs), not a
+      // source-text substitution.
+      inputOverrides,
     }),
   });

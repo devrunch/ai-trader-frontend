@@ -23,6 +23,10 @@ export interface AttachedIndicator {
   source: string;
   label: string;
   pane: "main" | "sub" | "volume";
+  /** User overrides for this script's own input.*() declarations, keyed by
+   *  varId (e.g. { length: 50 }) -- TradingView-style per-instance settings.
+   *  Absent/empty means "run with the script's own defaults". */
+  params?: Record<string, unknown>;
 }
 
 export interface ChartLayout {

@@ -42,6 +42,7 @@ import { PositionsPanel } from "@/components/terminal/PositionsPanel";
 import { Disclaimer } from "@/components/Disclaimer";
 import { IndicatorPickerModal, type PickerEntry } from "@/components/terminal/IndicatorPickerModal";
 import { IndicatorEditorModal } from "@/components/terminal/IndicatorEditorModal";
+import { IndicatorSettingsModal } from "@/components/terminal/IndicatorSettingsModal";
 import { toAttachedIndicator, SPECIAL_INDICATORS, VOLUME_PROFILE_MODE_BY_ID, INDICATOR_NAME_BY_ID } from "@/lib/indicators/catalog";
 import { VSA_LEGEND } from "@/lib/chart-adapter/vsa-colors";
 import type { AttachedIndicator } from "@/lib/api/charts";
@@ -235,16 +236,27 @@ export default function TerminalPage() {
   // error anywhere. Found live when Supertrend silently failed to render.
   const [indicatorError, setIndicatorError] = useState<{ spec: AttachedIndicator; message: string } | null>(null);
 
+  // Bumped after every successful attach -- the settings gear's visibility
+  // (legendItems' hasSettings) reads chartRef.current.getIndicatorInputsMeta()
+  // imperatively, which nothing else would tell React to re-render for once
+  // the async attach resolves.
+  const [metaVersion, setMetaVersion] = useState(0);
   const attachOne = useCallback((chart: ChartAdapter, spec: AttachedIndicator) => {
     attachedPineRef.current.add(spec.id);
     chart.attachPineIndicator(spec).then((id) => {
-      if (id) return;
+      if (id) { setMetaVersion((v) => v + 1); return; }
       // Allow a retry: this indicator isn't really attached, so the diffing
       // effect (or the retry button below) should be free to try it again.
       attachedPineRef.current.delete(spec.id);
       setIndicatorError({ spec, message: `"${spec.label}" couldn't load -- the chart engine may be busy.` });
     });
   }, []);
+
+  const [settingsTarget, setSettingsTarget] = useState<{ id: string; label: string } | null>(null);
+  function handleSaveIndicatorParams(id: string, params: Record<string, unknown>) {
+    setIndicators((prev) => prev.map((i) => (i.id === id ? { ...i, params } : i)));
+    reattachIfLive(id);
+  }
 
   /* Editing a custom indicator that's already on the chart: the diffing
      effect below only reacts to an id entering/leaving `indicators`, not to
@@ -336,8 +348,14 @@ export default function TerminalPage() {
     }
   }, [hiddenIds, indicators, volumeProfiles, chartReady]);
 
+  // Recomputed every render, including the one metaVersion triggers once an
+  // async attach resolves and getIndicatorInputsMeta actually has data.
+  void metaVersion;
   const legendItems: LegendItem[] = [
-    ...indicators.map((i): LegendItem => ({ id: i.id, label: i.label, hidden: hiddenIds.has(i.id) })),
+    ...indicators.map((i): LegendItem => ({
+      id: i.id, label: i.label, hidden: hiddenIds.has(i.id),
+      hasSettings: (chartRef.current?.getIndicatorInputsMeta(i.id)?.length ?? 0) > 0,
+    })),
     ...[...volumeProfiles].map((id): LegendItem => ({ id, label: INDICATOR_NAME_BY_ID[id] ?? id, hidden: hiddenIds.has(id) })),
     // VSA is a single boolean toggle with no separate "attached but hidden"
     // state to distinguish -- only shown while on, and its hide/delete icons
@@ -933,6 +951,17 @@ export default function TerminalPage() {
           }}
         />
 
+        {settingsTarget && (
+          <IndicatorSettingsModal
+            open
+            onClose={() => setSettingsTarget(null)}
+            label={settingsTarget.label}
+            inputsMeta={chartRef.current?.getIndicatorInputsMeta(settingsTarget.id) ?? []}
+            initialParams={indicators.find((i) => i.id === settingsTarget.id)?.params ?? {}}
+            onSave={(params) => handleSaveIndicatorParams(settingsTarget.id, params)}
+          />
+        )}
+
         <div className="w-px h-5 bg-border mx-1 hidden lg:block" />
 
         {/* Period selector */}
@@ -1016,7 +1045,11 @@ export default function TerminalPage() {
               onLoadMore={handleLoadMore}
               legendItems={legendItems}
               onToggleVisible={handleToggleIndicatorVisible}
-              onDelete={handleDeleteIndicator} />
+              onDelete={handleDeleteIndicator}
+              onOpenSettings={(id) => {
+                const indicator = indicators.find((i) => i.id === id);
+                if (indicator) setSettingsTarget({ id, label: indicator.label });
+              }} />
           )}
           {indicatorError && (
             <div className="absolute top-3 right-3 z-20 max-w-xs">

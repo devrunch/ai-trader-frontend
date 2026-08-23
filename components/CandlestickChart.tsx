@@ -26,6 +26,11 @@ export interface LegendItem {
    *  Spread Analysis's four categories) -- renders an info icon that reveals
    *  this key on hover. Omitted entirely for a plain single-color line. */
   colorKey?: { label: string; color: string }[];
+  /** True when the sandbox found real input.*() declarations in this
+   *  script's last successful run -- shows the settings gear. False/absent
+   *  for scripts with no adjustable inputs, or non-Pine rows (Volume
+   *  Profile, VSA) that were never candidates in the first place. */
+  hasSettings?: boolean;
 }
 
 // The legend's swatch is cycled by list position, not by asking the chart
@@ -53,7 +58,7 @@ function paneRectsEqual(a: PaneRect[], b: PaneRect[]): boolean {
  * the parent so a drawing-tools rail / AI agent can draw on it. */
 export function CandlestickChart({
   bars, signal, height = 320, fill = false, livePrice, onReady, onLoadMore,
-  legendItems = [], onToggleVisible, onDelete,
+  legendItems = [], onToggleVisible, onDelete, onOpenSettings,
 }: {
   bars: ApiOhlcBar[];
   signal: ChartSignal | null;
@@ -71,6 +76,7 @@ export function CandlestickChart({
   legendItems?: LegendItem[];
   onToggleVisible?: (id: string, visible: boolean) => void;
   onDelete?: (id: string) => void;
+  onOpenSettings?: (id: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const adapterRef = useRef<ChartAdapter | null>(null);
@@ -177,6 +183,7 @@ export function CandlestickChart({
           items={legendItems}
           onToggleVisible={onToggleVisible}
           onDelete={onDelete}
+          onOpenSettings={onOpenSettings}
         />
       )}
       {paneRects.filter((r) => r.index > 0 && r.indicatorId).map((rect) => (
@@ -247,10 +254,11 @@ function OhlcvReadout({ bar }: { bar: ApiOhlcBar }) {
  *  and delete revealed on hover. Sits just under the OHLCV readout rather
  *  than floating separately per-pane -- see CandlestickChart.tsx's own
  *  header comment on that trade-off. */
-function IndicatorLegend({ items, onToggleVisible, onDelete }: {
+function IndicatorLegend({ items, onToggleVisible, onDelete, onOpenSettings }: {
   items: LegendItem[];
   onToggleVisible?: (id: string, visible: boolean) => void;
   onDelete?: (id: string) => void;
+  onOpenSettings?: (id: string) => void;
 }) {
   return (
     <div className="absolute top-6 left-2 z-10 flex flex-col gap-0.5 text-[11px]">
@@ -264,6 +272,18 @@ function IndicatorLegend({ items, onToggleVisible, onDelete }: {
           <span className="font-mono">{item.label}</span>
           {item.colorKey && <ColorKeyInfo entries={item.colorKey} />}
           <span className="hidden group-hover:flex items-center gap-1 ml-1">
+            {item.hasSettings && (
+              <button
+                onClick={() => onOpenSettings?.(item.id)}
+                aria-label={`${item.label} settings`}
+                title="Settings"
+                className="p-0.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </button>
+            )}
             <button
               onClick={() => onToggleVisible?.(item.id, item.hidden)}
               aria-label={item.hidden ? `Show ${item.label}` : `Hide ${item.label}`}

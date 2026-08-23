@@ -2,7 +2,7 @@ import { createChart, createSeriesMarkers, CandlestickSeries, HistogramSeries, T
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChatDrawing } from "@/lib/api/chat";
 import type { SavedDrawing } from "@/lib/api/charts";
-import { runPineIndicator } from "@/lib/api/pine";
+import { runPineIndicator, type PineInputMeta } from "@/lib/api/pine";
 import { attachPinePlotsToPane } from "./pine-render";
 import { createSegmentPrimitive, createRayPrimitive, createRectPrimitive, createFibonacciPrimitive, createTradeMarkerPrimitive, type DrawPoint } from "./drawing-primitives";
 import { createVolumeProfilePrimitive, type VolumeProfileHandle, type VolumeProfileMode } from "./volume-profile-primitive";
@@ -73,6 +73,9 @@ export class LightweightChartsAdapter implements ChartAdapter {
    *  indicator id (all of that indicator's boolean plots merged into one
    *  set of markers -- see attachPineIndicator). */
   private markerHandles = new Map<string, ISeriesMarkersPluginApi<Time>>();
+  /** This indicator's own input.*() metadata, from its last successful
+   *  attach -- what the settings-gear form reads. */
+  private inputsMetaByIndicator = new Map<string, PineInputMeta[]>();
   private bars: ApiOhlcBar[] = [];
   private onLoadMoreFn?: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
   private loadingMore = false;
@@ -348,12 +351,18 @@ export class LightweightChartsAdapter implements ChartAdapter {
     return this.markerHandles.get(id)?.markers().length ?? 0;
   }
 
+  getIndicatorInputsMeta(id: string): PineInputMeta[] | undefined {
+    return this.inputsMetaByIndicator.get(id);
+  }
+
   async attachPineIndicator(spec: PineIndicatorSpec): Promise<string | null> {
-    const result = await runPineIndicator(spec.source, this.bars, this.activeSymbol, this.activeExchange);
+    const result = await runPineIndicator(spec.source, this.bars, this.activeSymbol, this.activeExchange, spec.params);
     // Previously returned spec.id here too -- indistinguishable from success,
     // so the caller that checks for a null return (and the one that doesn't)
     // both treated a failed sandbox run as a silent no-op attach.
     if (!result.ok || !result.plots || !this.chart) return null;
+    if (result.inputsMeta && result.inputsMeta.length > 0) this.inputsMetaByIndicator.set(spec.id, result.inputsMeta);
+    else this.inputsMetaByIndicator.delete(spec.id);
     // "volume" shares pane 0 with "main" (it's positioned over the volume
     // histogram's region, not a pane of its own) -- only "sub" gets a fresh
     // pane. It does NOT share the "volume" price scale itself: volume runs
@@ -408,6 +417,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
     }
     for (const s of series) this.chart.removeSeries(s);
     this.pineSeries.delete(id);
+    this.inputsMetaByIndicator.delete(id);
     // Sub-pane indicators each own their pane exclusively (see
     // attachPineIndicator) -- an indicator's removal is that pane's last
     // series going away, so clean the now-empty pane up rather than leaving

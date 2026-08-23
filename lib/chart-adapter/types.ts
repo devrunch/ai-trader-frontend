@@ -1,6 +1,7 @@
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChatDrawing } from "@/lib/api/chat";
 import type { SavedDrawing } from "@/lib/api/charts";
+import type { PineInputMeta } from "@/lib/api/pine";
 import type { VolumeProfileMode } from "./volume-profile-primitive";
 
 export type { VolumeProfileMode };
@@ -47,6 +48,10 @@ export interface PineIndicatorSpec {
   source: string;
   label: string;
   pane: "main" | "sub" | "volume";
+  /** User overrides for this script's own input.*() declarations, keyed by
+   *  varId -- forwarded to runPineIndicator as inputOverrides. Absent means
+   *  "run with the script's own defaults". */
+  params?: Record<string, unknown>;
 }
 
 /**
@@ -66,6 +71,12 @@ export interface ChartAdapter {
    *  scripts reading syminfo.* or timeframe.* resolve real values. Call
    *  whenever the active symbol changes, before attaching any indicator. */
   setActiveSymbol(symbol: string, exchange: string): void;
+
+  /** This indicator's own input.*() declarations (type, title, default,
+   *  min/max/options), as parsed by real PineTS at its last successful
+   *  attach -- what a settings form renders from. Undefined until the
+   *  indicator has attached at least once, or if it has no inputs at all. */
+  getIndicatorInputsMeta(id: string): PineInputMeta[] | undefined;
 
   /** Attach/remove one Pine-authored indicator by source -- there is no
    *  fixed catalog to name against, so every indicator beyond the default
