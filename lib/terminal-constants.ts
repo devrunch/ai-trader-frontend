@@ -1,5 +1,5 @@
 /** Exchanges the search box can jump to directly. */
-export const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE", "MCX"] as const;
+export const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE", "MCX", "FOREX"] as const;
 
 /**
  * Exchanges the paper account can actually trade on.
@@ -39,6 +39,6 @@ export const SIGNAL_EXCHANGES = new Set(["NSE", "BSE"]);
  */
 export const REALTIME_EXCHANGES = new Set(["NSE", "BSE", "MCX"]);
 
-export const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$", MCX: "₹" };
+export const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$", MCX: "₹", FOREX: "$" };
 
 export const MAX_WATCHLIST_SIZE = 15;

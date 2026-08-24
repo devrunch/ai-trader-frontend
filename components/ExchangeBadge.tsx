@@ -3,7 +3,7 @@
  *  without a real logo, and it's what actually differentiates rows at a
  *  glance in a mixed-exchange result list. */
 const EXCHANGE_COLORS: Record<string, string> = {
-  NSE: "#3b82f6", BSE: "#8b5cf6", NASDAQ: "#f59e0b", NYSE: "#10b981", MCX: "#eab308",
+  NSE: "#3b82f6", BSE: "#8b5cf6", NASDAQ: "#f59e0b", NYSE: "#10b981", MCX: "#eab308", FOREX: "#ec4899",
 };
 
 export function ExchangeBadge({ exchange }: { exchange: string }) {
