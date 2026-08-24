@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { ApiIndicator } from "@/lib/api/indicators";
 import { INDICATOR_CATEGORIES, type SpecialIndicatorEntry } from "@/lib/indicators/catalog";
+import { ResponsiveModal } from "@/components/ResponsiveModal";
 
 /** One row in the picker: either a real DB-backed Pine indicator (a default,
  *  ownerId: null, or the current user's own custom one) or one of the small
@@ -28,26 +29,16 @@ export function IndicatorPickerModal({ open, onClose, entries, attachedIds, onTo
 }) {
   const [query, setQuery] = useState("");
 
-  if (!open) return null;
-
   const q = query.trim().toLowerCase();
   const filtered = q
     ? entries.filter((e) => e.name.toLowerCase().includes(q) || e.category.toLowerCase().includes(q))
     : entries;
 
   return (
-    <div
-      role="dialog" aria-modal="true" aria-labelledby="indicator-picker-title"
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-sm p-4 pt-[8vh]"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card border border-border w-full max-w-lg max-h-[76vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ResponsiveModal open={open} onClose={onClose} ariaLabel="Indicators" maxWidthClass="max-w-lg" maxHeightClass="max-h-[76vh]">
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-3">
-            <h2 id="indicator-picker-title" className="font-heading font-semibold text-base">Indicators</h2>
+            <h2 className="font-heading font-semibold text-base">Indicators</h2>
             <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
             </button>
@@ -89,8 +80,7 @@ export function IndicatorPickerModal({ open, onClose, entries, attachedIds, onTo
             <p className="px-4 py-6 text-sm text-muted-foreground text-center">No indicators match &ldquo;{query}&rdquo;.</p>
           )}
         </div>
-      </div>
-    </div>
+    </ResponsiveModal>
   );
 }
 

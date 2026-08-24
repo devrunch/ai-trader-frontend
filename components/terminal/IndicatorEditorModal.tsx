@@ -5,6 +5,7 @@ import { createIndicator, updateIndicator, type ApiIndicator, type ApiOhlcBar, t
 import { runPineIndicator } from "@/lib/api/pine";
 import { INDICATOR_CATEGORIES } from "@/lib/indicators/catalog";
 import { findErrorHint } from "@/lib/indicators/error-hints";
+import { ResponsiveModal } from "@/components/ResponsiveModal";
 
 type TestResult =
   | { status: "idle" }
@@ -39,8 +40,6 @@ export function IndicatorEditorModal({ open, onClose, initial, bars, symbol, exc
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
-
-  if (!open) return null;
 
   function syncGutterScroll() {
     if (gutterRef.current && textareaRef.current) gutterRef.current.scrollTop = textareaRef.current.scrollTop;
@@ -80,17 +79,9 @@ export function IndicatorEditorModal({ open, onClose, initial, bars, symbol, exc
   const hint = test.status === "error" ? findErrorHint(source) : null;
 
   return (
-    <div
-      role="dialog" aria-modal="true" aria-labelledby="indicator-editor-title"
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-sm p-4 pt-[6vh]"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card border border-border w-full max-w-2xl max-h-[88vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ResponsiveModal open={open} onClose={onClose} ariaLabel="Indicator editor" maxWidthClass="max-w-2xl" maxHeightClass="max-h-[88vh]">
         <div className="p-4 border-b border-border flex items-center justify-between">
-          <h2 id="indicator-editor-title" className="font-heading font-semibold text-base">
+          <h2 className="font-heading font-semibold text-base">
             {initial ? "Edit Indicator" : "New Indicator"}
           </h2>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground">
@@ -221,7 +212,6 @@ export function IndicatorEditorModal({ open, onClose, initial, bars, symbol, exc
             {saving ? "Saving…" : initial ? "Save Changes" : "Create Indicator"}
           </button>
         </div>
-      </div>
-    </div>
+    </ResponsiveModal>
   );
 }

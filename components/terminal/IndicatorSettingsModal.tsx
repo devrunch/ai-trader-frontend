@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { PineInputMeta } from "@/lib/api/pine";
 import type { PlotStyleOverride } from "@/lib/chart-adapter/types";
 import { INTERVALS } from "@/lib/periods";
+import { ResponsiveModal } from "@/components/ResponsiveModal";
 
 const SOURCE_PRESETS = ["close", "open", "high", "low", "hl2", "hlc3", "ohlc4", "volume"];
 const DEFAULT_SWATCH = "#8b8a9e";
@@ -53,8 +54,6 @@ export function IndicatorSettingsModal({ open, onClose, label, inputsMeta, plotN
   const [styleValues, setStyleValues] = useState<Record<string, PlotStyleOverride>>(() => ({ ...initialStyle }));
   const [visibility, setVisibility] = useState<IndicatorVisibility>(initialVisibility);
 
-  if (!open) return null;
-
   function setParam(varId: string, value: unknown) {
     setParamValues((prev) => ({ ...prev, [varId]: value }));
   }
@@ -72,17 +71,9 @@ export function IndicatorSettingsModal({ open, onClose, label, inputsMeta, plotN
     }`;
 
   return (
-    <div
-      role="dialog" aria-modal="true" aria-labelledby="indicator-settings-title"
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-sm p-4 pt-[10vh]"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card border border-border w-full max-w-sm max-h-[75vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ResponsiveModal open={open} onClose={onClose} ariaLabel="Indicator settings" maxWidthClass="max-w-sm" maxHeightClass="max-h-[75vh]">
         <div className="p-4 pb-0 border-b border-border flex items-center justify-between">
-          <h2 id="indicator-settings-title" className="font-heading font-semibold text-base truncate">
+          <h2 className="font-heading font-semibold text-base truncate">
             {label}
           </h2>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground shrink-0 mb-3">
@@ -190,8 +181,7 @@ export function IndicatorSettingsModal({ open, onClose, label, inputsMeta, plotN
             Save
           </button>
         </div>
-      </div>
-    </div>
+    </ResponsiveModal>
   );
 }
 
