@@ -116,6 +116,12 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Separate from the avatar menu above -- the nav tabs collapse into this
+  // below lg (1024px, the same cutoff the terminal's own mobile layout
+  // uses), so a phone-width header shows logo + hamburger + avatar instead
+  // of six nav labels squeezed into one row.
+  const [navMenuOpen, setNavMenuOpen] = useState(false);
+  const navMenuRef = useRef<HTMLDivElement>(null);
   const { user } = useCurrentUser();
   // Client-side only for whether to SHOW the link — RolesGuard on the API is
   // what actually protects the page a click away.
@@ -126,6 +132,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (navMenuRef.current && !navMenuRef.current.contains(e.target as Node)) setNavMenuOpen(false);
     }
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
@@ -139,7 +146,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
+    <div className="h-dvh bg-background text-foreground flex flex-col overflow-hidden">
 
       {/* ── Header ── */}
       <header className="bg-background border-b border-border h-14 flex items-center px-4 sm:px-8 gap-5 shrink-0 z-30">
@@ -154,8 +161,10 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
           </span>
         </Link>
 
-        {/* Nav tabs */}
-        <nav className="flex items-center gap-1 ml-2">
+        {/* Nav tabs -- inline at desktop width, collapsed into the
+            hamburger below lg (same cutoff the terminal's own mobile
+            layout uses) so a narrow header doesn't cram six labels in. */}
+        <nav className="hidden lg:flex items-center gap-1 ml-2">
           {tabs.map(({ href, label }) => {
             const active = pathname.startsWith(href);
             return (
@@ -171,6 +180,33 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+
+        <div className="relative lg:hidden" ref={navMenuRef}>
+          <button
+            onClick={() => setNavMenuOpen(v => !v)}
+            aria-label="Open navigation menu"
+            aria-expanded={navMenuOpen}
+            className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>
+          </button>
+          {navMenuOpen && (
+            <div className="absolute left-0 top-full mt-2 w-48 bg-card border border-border shadow-lg z-40">
+              {tabs.map(({ href, label }) => {
+                const active = pathname.startsWith(href);
+                return (
+                  <Link key={href} href={href}
+                    onClick={() => { sessionStorage.setItem("lastDashboardTab", href); setNavMenuOpen(false); }}
+                    className={`block px-4 py-2.5 text-sm font-medium transition-colors ${
+                      active ? "text-foreground bg-secondary" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    }`}>
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         <div className="flex-1" />
 

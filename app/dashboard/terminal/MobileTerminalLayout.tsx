@@ -49,7 +49,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
   } = props;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col -mx-4 sm:-mx-8">
       {/* Chart destination -- always mounted, CSS-hidden when another tab
           is active (see this file's own top comment for why). */}
       <div className={rightTab === "chart" ? "flex-1 flex flex-col min-h-0" : "hidden"}>
