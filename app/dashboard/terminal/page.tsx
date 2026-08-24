@@ -31,6 +31,7 @@ import { useChartLayout } from "@/lib/use-chart-layout";
 import { useLiveQuote } from "@/lib/use-live-quote";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { DesktopTerminalLayout, type DesktopTerminalLayoutProps } from "./DesktopTerminalLayout";
+import { MobileTerminalLayout } from "./MobileTerminalLayout";
 import { useChartStateSync } from "@/lib/use-chart-state-sync";
 import { useMarketStatus } from "@/lib/market-status";
 import type { LegendItem } from "@/components/CandlestickChart";
@@ -782,7 +783,5 @@ export default function TerminalPage() {
     applyDrawings, removeTurnDrawings, applyIndicatorChanges, applyCustomIndicators,
   };
 
-  // MobileTerminalLayout doesn't exist yet -- a mobile session renders
-  // nothing until that lands, rather than shipping a build error.
-  return isMobile ? null : <DesktopTerminalLayout {...sharedProps} />;
+  return isMobile ? <MobileTerminalLayout {...sharedProps} /> : <DesktopTerminalLayout {...sharedProps} />;
 }
