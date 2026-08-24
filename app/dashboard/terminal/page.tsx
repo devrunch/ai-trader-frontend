@@ -26,6 +26,8 @@ import {
   type Quote,
 } from "@/lib/api";
 import { PERIODS, withinVisibilityRange } from "@/lib/periods";
+import { resolveInterval } from "@/lib/customInterval";
+import { aggregateBars } from "@/lib/aggregateBars";
 import type { PineInputMeta } from "@/lib/api/pine";
 import { useChartLayout } from "@/lib/use-chart-layout";
 import { useLiveQuote } from "@/lib/use-live-quote";
@@ -106,6 +108,21 @@ export default function TerminalPage() {
     if (e) setActiveExchange(e.toUpperCase());
   }, []);
   const [period, setPeriod]                 = useState("1D");
+  // Candle size -- independent of `period`, which only controls the visible
+  // window (see lib/periods.ts). Named candleInterval, not interval: a bare
+  // `interval`/`setInterval` pair shadows the global timer API, which is a
+  // trap for a later edit that adds a real setInterval() call to this file.
+  // Defaults to whatever the current period bakes in, and resets to that
+  // default whenever a period pill is picked (via pickPeriod below, not an
+  // effect -- setting state from a click handler, not from a render-time
+  // dependency, is what the derived-state-in-effect lint rule wants here),
+  // but can be overridden on its own via IntervalPicker without touching
+  // `period` at all.
+  const [candleInterval, setCandleInterval] = useState(PERIODS[0].interval);
+  function pickPeriod(label: string) {
+    setPeriod(label);
+    setCandleInterval((PERIODS.find((p) => p.label === label) ?? PERIODS[0]).interval);
+  }
   const [bars, setBars]                     = useState<ApiOhlcBar[]>([]);
   const [barsLoading, setBarsLoading]       = useState(true);
   const [barsError, setBarsError]           = useState("");
@@ -368,20 +385,19 @@ export default function TerminalPage() {
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    const pCfg = PERIODS.find((p) => p.label === period) ?? PERIODS[0];
     for (const i of indicators) {
-      chart.setIndicatorVisible(i.id, !hiddenIds.has(i.id) && withinVisibilityRange(pCfg.interval, i.visibility));
+      chart.setIndicatorVisible(i.id, !hiddenIds.has(i.id) && withinVisibilityRange(candleInterval, i.visibility));
     }
     for (const id of volumeProfiles) {
       chart.setIndicatorVisible(id, !hiddenIds.has(id));
     }
-  }, [hiddenIds, indicators, volumeProfiles, chartReady, period]);
+  }, [hiddenIds, indicators, volumeProfiles, chartReady, candleInterval]);
 
   // Real-time report of what's on the chart, so the chat agent's
   // chart_indicators tools (list/set_indicator_params/edit_indicator_source/
   // remove_chart_indicator) see live data instead of nothing at all -- see
   // ai-trader-api's SignalsGateway and lib/use-chart-state-sync.ts.
-  useChartStateSync(indicators, (PERIODS.find((p) => p.label === period) ?? PERIODS[0]).interval);
+  useChartStateSync(indicators, candleInterval);
 
   const legendItems: LegendItem[] = [
     ...indicators.map((i): LegendItem => ({
@@ -584,27 +600,30 @@ export default function TerminalPage() {
   const loadedDaysRef = useRef(PERIODS[0].days);
   useEffect(() => {
     const pCfg = PERIODS.find(p => p.label === period) ?? PERIODS[0];
+    const { fetchInterval, bucketSize, guardSessionBoundary } = resolveInterval(candleInterval);
     loadedDaysRef.current = pCfg.days;
-    getHistorical(activeSymbol, activeExchange, pCfg.interval, pCfg.days)
-      .then(({ bars: b }) => { setBars(b); setBarsError(""); })
+    getHistorical(activeSymbol, activeExchange, fetchInterval, pCfg.days)
+      .then(({ bars: b }) => { setBars(aggregateBars(b, bucketSize, guardSessionBoundary)); setBarsError(""); })
       .catch(e => { setBars([]); setBarsError(errorMessage(e, "Couldn't load the chart.")); })
       .finally(() => setBarsLoading(false));
-  }, [activeSymbol, activeExchange, period, barsReload]);
+  }, [activeSymbol, activeExchange, period, candleInterval, barsReload]);
 
   /* Bars older than what's currently loaded, for panning back past the
      chart's own edge. Re-fetches the same interval over a wider window
      (doubled each time, capped at "All"'s span) rather than true cursor
      pagination — the historical endpoint only takes a day-count from now,
-     not a "before this timestamp" cursor. */
+     not a "before this timestamp" cursor. Aggregates with the same
+     bucketing as the base fetch above, so a custom candle never straddles
+     the old/new fetch boundary differently than it would within one fetch. */
   const handleLoadMore = useCallback((oldestTimestampMs: number): Promise<ApiOhlcBar[]> => {
-    const pCfg = PERIODS.find(p => p.label === period) ?? PERIODS[0];
+    const { fetchInterval, bucketSize, guardSessionBoundary } = resolveInterval(candleInterval);
     const nextDays = Math.min(loadedDaysRef.current * 2, 3650);
     if (nextDays <= loadedDaysRef.current) return Promise.resolve([]);
     loadedDaysRef.current = nextDays;
-    return getHistorical(activeSymbol, activeExchange, pCfg.interval, nextDays)
-      .then(({ bars: b }) => b.filter(bar => bar.time * 1000 < oldestTimestampMs))
+    return getHistorical(activeSymbol, activeExchange, fetchInterval, nextDays)
+      .then(({ bars: b }) => aggregateBars(b, bucketSize, guardSessionBoundary).filter(bar => bar.time * 1000 < oldestTimestampMs))
       .catch(() => []);
-  }, [activeSymbol, activeExchange, period]);
+  }, [activeSymbol, activeExchange, candleInterval]);
 
   /* Existing stored signal (background, doesn't force a fresh LLM call) */
   useEffect(() => {
@@ -769,7 +788,8 @@ export default function TerminalPage() {
     settingsTarget, setSettingsTarget, handleSaveIndicatorSettings,
     legendItems, handleDeleteIndicator, handleToggleIndicatorVisible,
     volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn,
-    period, setPeriod,
+    period, setPeriod: pickPeriod,
+    candleInterval, setCandleInterval,
     rightTab, setRightTab,
     watchlist, watchlistLoading, watchlistBusy, watchlistError, activeInWatchlist, watchlistFull,
     handleAddToWatchlist, handleRemoveFromWatchlist, suggestQuotes,

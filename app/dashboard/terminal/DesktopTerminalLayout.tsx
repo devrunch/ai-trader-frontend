@@ -26,6 +26,7 @@ import { toAttachedIndicator } from "@/lib/indicators/catalog";
 import type { AttachedIndicator } from "@/lib/api/charts";
 import { TRADABLE_EXCHANGES, SIGNAL_EXCHANGES, REALTIME_EXCHANGES, CURRENCY, MAX_WATCHLIST_SIZE } from "@/lib/terminal-constants";
 import { SymbolSearchModal } from "@/components/terminal/SymbolSearchModal";
+import { IntervalPicker } from "@/components/terminal/IntervalPicker";
 
 type LiveQuoteState = ReturnType<typeof useLiveQuote>;
 type SettingsTarget = { id: string; label: string; plotNames: string[]; inputsMeta: PineInputMeta[] } | null;
@@ -83,7 +84,12 @@ export interface DesktopTerminalLayoutProps {
   setVsaOn: Dispatch<SetStateAction<boolean>>;
 
   period: string;
-  setPeriod: Dispatch<SetStateAction<string>>;
+  // A plain callback, not a raw Dispatch -- picking a period also resets
+  // candleInterval to that period's baked-in default (see page.tsx's
+  // pickPeriod), which a bare setState updater couldn't do.
+  setPeriod: (label: string) => void;
+  candleInterval: string;
+  setCandleInterval: Dispatch<SetStateAction<string>>;
 
   rightTab: "chart" | "signal" | "trade" | "positions" | "chat";
   setRightTab: Dispatch<SetStateAction<"chart" | "signal" | "trade" | "positions" | "chat">>;
@@ -150,6 +156,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
     legendItems, handleDeleteIndicator, handleToggleIndicatorVisible,
     volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn,
     period, setPeriod,
+    candleInterval, setCandleInterval,
     rightTab, setRightTab,
     watchlist, watchlistLoading, watchlistBusy, watchlistError, activeInWatchlist, watchlistFull,
     handleAddToWatchlist, handleRemoveFromWatchlist, suggestQuotes,
@@ -194,6 +201,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
         <div className="flex items-baseline gap-2 min-w-0">
           <span className="font-bold text-sm">{activeSymbol}</span>
           <span className="text-[10px] text-muted-foreground font-mono">{activeExchange}</span>
+          <IntervalPicker value={candleInterval} onChange={setCandleInterval} />
           {ltp === null ? (
             <span className="font-mono text-sm text-muted-foreground ml-1" role="status">
               {connected ? "loading…" : "reconnecting…"}

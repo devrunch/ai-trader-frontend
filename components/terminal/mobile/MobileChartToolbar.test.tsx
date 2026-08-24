@@ -7,6 +7,7 @@ const baseProps = {
   symbol: "RELIANCE", exchange: "NSE", currency: "₹", ltp: 1310.5,
   onOpenSearch: vi.fn(), activeTool: "cursor", onPickTool: vi.fn(),
   period: "1D", onPickPeriod: vi.fn(), onOpenIndicators: vi.fn(),
+  candleInterval: "1m", onPickInterval: vi.fn(),
 };
 
 describe("MobileChartToolbar", () => {

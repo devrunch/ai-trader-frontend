@@ -4,15 +4,16 @@ export interface ChartPeriod {
   days: number;
 }
 
-/** Every distinct candle interval PERIODS uses, ordered coarsest-to-finest
- *  is wrong for a min/max resolution picker -- TradingView's own Visibility
- *  tab reads "minimum resolution" as the finest (smallest) bar and "maximum"
- *  as the coarsest (largest), so this is ordered finest-first to match. This
- *  app has no free-form tick/second/custom-range resolution the way
- *  TradingView does -- these 5 are the only real intervals a chart here can
- *  ever be on, so a min/max picker built from anything else would offer
- *  options that don't correspond to a real chart state. */
-export const INTERVALS = ["1m", "5m", "30m", "1h", "1d"] as const;
+/** The 6 native candle resolutions the backend actually serves (confirmed
+ *  against every provider -- Kite/Deriv/yfinance only ever give 1m/5m/15m/
+ *  30m/1h/1d), ordered coarsest-to-finest is wrong for a min/max resolution
+ *  picker -- TradingView's own Visibility tab reads "minimum resolution" as
+ *  the finest (smallest) bar and "maximum" as the coarsest (largest), so
+ *  this is ordered finest-first to match. Also IntervalPicker's preset list.
+ *  A user-typed custom interval (see customInterval.ts) isn't one of these
+ *  -- withinVisibilityRange below already fails open for an interval outside
+ *  this set, which is exactly what a custom interval needs. */
+export const INTERVALS = ["1m", "5m", "15m", "30m", "1h", "1d"] as const;
 export type Interval = (typeof INTERVALS)[number];
 
 /** TradingView's Visibility tab: an indicator is visible only while the

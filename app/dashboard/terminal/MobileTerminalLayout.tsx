@@ -36,6 +36,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
     settingsTarget, setSettingsTarget, handleSaveIndicatorSettings,
     legendItems, handleDeleteIndicator, handleToggleIndicatorVisible,
     period, setPeriod,
+    candleInterval, setCandleInterval,
     rightTab, setRightTab,
     displaySignal, signalError, signalLoading, askedEmpty, askError, asking, handleAskAI,
     prefill, setPrefill,
@@ -60,6 +61,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
           onOpenSearch={() => setSearchOpen(true)}
           activeTool={activeTool} onPickTool={pickTool}
           period={period} onPickPeriod={setPeriod}
+          candleInterval={candleInterval} onPickInterval={setCandleInterval}
           onOpenIndicators={() => setIndicatorPickerOpen(true)}
         />
         <div className="flex-1 min-w-0 relative bg-card">
