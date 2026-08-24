@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from "react";
-import Link from "next/link";
 import {
   getHistorical,
   getQuote,
@@ -13,9 +12,7 @@ import {
   getPaperPositions,
   searchSymbols,
   errorMessage,
-  PRICE_DELAY_NOTE,
   getIndicators,
-  deleteIndicator,
   type ApiOhlcBar,
   type ApiSignal,
   type ApiGeneratedSignal,
@@ -32,25 +29,21 @@ import { PERIODS, withinVisibilityRange } from "@/lib/periods";
 import type { PineInputMeta } from "@/lib/api/pine";
 import { useChartLayout } from "@/lib/use-chart-layout";
 import { useLiveQuote } from "@/lib/use-live-quote";
+import { useIsMobile } from "@/lib/use-is-mobile";
+import { DesktopTerminalLayout, type DesktopTerminalLayoutProps } from "./DesktopTerminalLayout";
 import { useChartStateSync } from "@/lib/use-chart-state-sync";
 import { useMarketStatus } from "@/lib/market-status";
-import { CandlestickChart, type LegendItem } from "@/components/CandlestickChart";
+import type { LegendItem } from "@/components/CandlestickChart";
 import type { ChartAdapter } from "@/lib/chart-adapter/types";
-import { OrderTicket, type OrderPrefill } from "@/components/OrderTicket";
-import { ChatPanel } from "@/components/chat/ChatPanel";
-import { ErrorState } from "@/components/ErrorState";
-import { DrawingToolbar, type DrawTool } from "@/components/terminal/DrawingToolbar";
-import { SignalPanel, type DisplaySignal } from "@/components/terminal/SignalPanel";
-import { PositionsPanel } from "@/components/terminal/PositionsPanel";
-import { Disclaimer } from "@/components/Disclaimer";
-import { IndicatorPickerModal, type PickerEntry } from "@/components/terminal/IndicatorPickerModal";
-import { IndicatorEditorModal } from "@/components/terminal/IndicatorEditorModal";
-import { IndicatorSettingsModal, type IndicatorSettingsResult } from "@/components/terminal/IndicatorSettingsModal";
-import { toAttachedIndicator, SPECIAL_INDICATORS, VOLUME_PROFILE_MODE_BY_ID, INDICATOR_NAME_BY_ID } from "@/lib/indicators/catalog";
+import type { OrderPrefill } from "@/components/OrderTicket";
+import type { DrawTool } from "@/components/terminal/DrawingToolbar";
+import type { DisplaySignal } from "@/components/terminal/SignalPanel";
+import type { PickerEntry } from "@/components/terminal/IndicatorPickerModal";
+import type { IndicatorSettingsResult } from "@/components/terminal/IndicatorSettingsModal";
+import { SPECIAL_INDICATORS, VOLUME_PROFILE_MODE_BY_ID, INDICATOR_NAME_BY_ID } from "@/lib/indicators/catalog";
 import { VSA_LEGEND } from "@/lib/chart-adapter/vsa-colors";
 import type { AttachedIndicator } from "@/lib/api/charts";
-
-const MAX_WATCHLIST_SIZE = 15;
+import { SIGNAL_EXCHANGES, MAX_WATCHLIST_SIZE } from "@/lib/terminal-constants";
 
 /**
  * What a chart shows before anyone touches it, and what Reset returns it to:
@@ -61,68 +54,6 @@ const MAX_WATCHLIST_SIZE = 15;
  * programmatically.
  */
 const DEFAULT_INDICATORS: AttachedIndicator[] = [];
-
-/** Exchanges the search box can jump to directly. */
-const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE", "MCX"] as const;
-
-/**
- * Exchanges the paper account can actually trade on.
- *
- * The account is denominated in rupees — an order in a dollar-priced symbol
- * would debit rupees for a dollar fill with no conversion. Matches the API's
- * own `TradableExchange` allowlist; kept here too so the Trade tab can explain
- * itself instead of the user finding out from a 400.
- *
- * MCX deliberately NOT included yet: futures have a genuinely different P&L
- * model (margin, lot size, mark-to-market, no simple quantity × price sizing)
- * that the equity-shaped paper account doesn't represent. Chart/search/live
- * data cover MCX now; paper trading it is a real, separate decision.
- */
-const TRADABLE_EXCHANGES = new Set(["NSE", "BSE"]);
-
-/**
- * Exchanges on-demand signal generation covers.
- *
- * Same two exchanges as TRADABLE_EXCHANGES today, but a separate constant on
- * purpose — this one mirrors the API's own SIGNAL_EXCHANGES (signals.controller.ts),
- * a different restriction for a different reason (its cost/risk model is
- * India-specific, not a currency-mismatch issue). If trading and signal
- * coverage ever diverge, sharing one set here would silently gate the wrong
- * feature.
- *
- * MCX deliberately NOT included yet, same reasoning as TRADABLE_EXCHANGES
- * above — AI-generated buy/sell signals for commodities need their own risk
- * model, not silently inherited from the equity one.
- */
-const SIGNAL_EXCHANGES = new Set(["NSE", "BSE"]);
-
-/**
- * Exchanges fed by the real-time Kite WebSocket. Everything else (NASDAQ,
- * NYSE, …) rides the yfinance poll instead, and that price is genuinely
- * stale — the delay disclosure only belongs on those.
- */
-const REALTIME_EXCHANGES = new Set(["NSE", "BSE", "MCX"]);
-
-const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$", MCX: "₹" };
-
-/** No real per-symbol logos available -- a deterministic colored monogram
- *  per exchange is the same fallback TradingView itself uses for a symbol
- *  without a real logo, and it's what actually differentiates rows at a
- *  glance in a mixed-exchange result list. */
-const EXCHANGE_COLORS: Record<string, string> = {
-  NSE: "#3b82f6", BSE: "#8b5cf6", NASDAQ: "#f59e0b", NYSE: "#10b981", MCX: "#eab308",
-};
-
-function ExchangeBadge({ exchange }: { exchange: string }) {
-  return (
-    <span
-      className="w-6 h-6 shrink-0 flex items-center justify-center text-[10px] font-bold text-white rounded-sm"
-      style={{ backgroundColor: EXCHANGE_COLORS[exchange] ?? "#6b7280" }}
-    >
-      {exchange[0]}
-    </span>
-  );
-}
 
 function fromApiSignal(s: ApiSignal): DisplaySignal {
   return {
@@ -486,7 +417,7 @@ export default function TerminalPage() {
     });
   }
 
-  const [rightTab, setRightTab] = useState<"signal" | "trade" | "positions" | "chat">("signal");
+  const [rightTab, setRightTab] = useState<"chart" | "signal" | "trade" | "positions" | "chat">("signal");
   const [positions, setPositions] = useState<ApiPosition[]>([]);
   /* Derived below from (rightTab, positionsLoaded) — holding it in state meant
      setting it synchronously inside an effect, which cascades a render. */
@@ -809,518 +740,49 @@ export default function TerminalPage() {
     }
   }
 
+  const isMobile = useIsMobile();
 
-  return (
-    <>
-      {/* Below ~1024px the three-pane layout collapses and the chart column
-          computes to roughly zero width — the user got a broken screen with no
-          explanation. Saying so is a fine answer; a silently unusable chart is
-          not. The rest of the product (signals, brief, portfolio) is fully
-          usable on a phone, so send them there rather than to a dead end. */}
-      <div className="lg:hidden h-full flex items-center justify-center px-6 text-center">
-        <div className="max-w-xs">
-          <h1 className="font-heading text-lg font-semibold mb-2">The terminal needs a wider screen</h1>
-          <p className="text-muted-foreground text-sm mb-5">
-            Charting, drawing and the AI panel need at least a small laptop
-            (1024px). Everything else works here.
-          </p>
-          <div className="flex flex-col gap-2">
-            <Link href="/dashboard/signals" className="px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground">
-              Go to Signals
-            </Link>
-            <Link href="/dashboard/brief" className="px-4 py-2 text-sm font-semibold border border-border text-muted-foreground hover:text-foreground transition-colors">
-              Read the Morning Brief
-            </Link>
-          </div>
-        </div>
-      </div>
+  // A mobile session should open on the chart, not desktop's side-panel
+  // default -- but only the first time this resolves true, and only if the
+  // user hasn't already touched the tab (still sitting at the untouched
+  // "signal" default). Adjusting state during render (not inside an effect)
+  // is the same pattern this file already uses for highlightedIndex above
+  // (see searchListKey/prevSearchListKey) -- mobileDefaultApplied guards it
+  // from firing more than once, so crossing the breakpoint later doesn't
+  // yank the user off a tab they deliberately picked.
+  const [mobileDefaultApplied, setMobileDefaultApplied] = useState(false);
+  if (isMobile && !mobileDefaultApplied && rightTab === "signal") {
+    setMobileDefaultApplied(true);
+    setRightTab("chart");
+  }
 
-    <div className="hidden lg:flex h-full flex-col -mx-4 sm:-mx-8">
+  if (isMobile === null) return null;
 
-      {/* ── Top toolbar ── */}
-      <div className="flex items-center gap-3 px-3 py-2 border-b border-border shrink-0">
-        {/* Search — a compact trigger button opening a modal, not an
-            always-expanded input; freed up real toolbar width that the
-            price/change/bid-ask group next to it needed. */}
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 text-xs font-semibold transition-colors shrink-0"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Search
-        </button>
-        {searchOpen && (
-          <div
-            role="dialog" aria-modal="true" aria-label="Search symbols"
-            className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-sm p-4 pt-[8vh]"
-            onClick={() => setSearchOpen(false)}
-          >
-            <div
-              className="bg-card border border-border w-full max-w-xl max-h-[75vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2" className="shrink-0"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input
-                  autoFocus
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                  placeholder="Search symbol…"
-                  aria-label="Search symbol"
-                  className="flex-1 min-w-0 text-sm text-foreground placeholder-muted-foreground focus:outline-none bg-transparent"
-                />
-                <button onClick={() => setSearchOpen(false)} aria-label="Close" className="text-muted-foreground hover:text-foreground shrink-0">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                </button>
-              </div>
-              {/* Filter chips -- filters the live results actually shown below,
-                  distinct from the exchange picker further down (that one only
-                  steers what "Load anyway" resolves an unmatched symbol on). */}
-              {q && (
-                <div className="flex gap-1 px-3 py-2 border-b border-border">
-                  {["ALL", ...SEARCH_EXCHANGES].map((ex) => (
-                    <button
-                      key={ex}
-                      onClick={() => setResultFilter(ex)}
-                      className={`px-2 py-0.5 text-[10px] font-mono font-semibold border transition-colors ${
-                        resultFilter === ex
-                          ? "border-primary text-link bg-primary/10"
-                          : "border-border text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {ex}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="overflow-y-auto">
-              {q ? (
-                <>
-                  {/* Real results — company name attached, exchange already
-                      correct, nothing to guess. This is what used to be
-                      "watchlist only, plus a tiny buried link" and read as
-                      search being broken. */}
-                  {searchingSymbols && symbolMatches.length === 0 && (
-                    <div className="px-3 py-3 text-xs text-muted-foreground text-center">Searching…</div>
-                  )}
-                  {filteredMatches.map((m, i) => (
-                    <button
-                      key={`${m.symbol}-${m.exchange}`}
-                      onClick={() => selectSymbol(m.symbol, m.exchange)}
-                      onMouseEnter={() => setHighlightedIndex(i)}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
-                        i === highlightedIndex ? "bg-secondary" : "hover:bg-secondary"
-                      }`}
-                    >
-                      <ExchangeBadge exchange={m.exchange} />
-                      <span className="text-sm font-bold shrink-0">{m.symbol}</span>
-                      <span className="text-xs text-muted-foreground truncate min-w-0">{m.name}</span>
-                      {m.exchange === "MCX" && (
-                        <span className="ml-auto text-[9px] text-muted-foreground font-mono border border-border px-1 shrink-0">FUT</span>
-                      )}
-                      <span className={`text-[10px] text-muted-foreground font-mono shrink-0 ${m.exchange === "MCX" ? "" : "ml-auto"}`}>{m.exchange}</span>
-                    </button>
-                  ))}
+  const sharedProps: DesktopTerminalLayoutProps = {
+    activeSymbol, activeExchange, quote, connected, ltp, change, changePct, isUp, bid, ask, spread,
+    bars, barsLoading, barsError, setBarsReload, handleLoadMore,
+    chartRef, setChartReady, activeTool, pickTool, clearMyDrawings, resetChart, layout,
+    indicators, setIndicators, indicatorPickerOpen, setIndicatorPickerOpen, pickerEntries, setApiIndicators,
+    editorOpen, setEditorOpen, editingIndicator, setEditingIndicator, reattachIfLive,
+    indicatorError, setIndicatorError, attachOne,
+    settingsTarget, setSettingsTarget, handleSaveIndicatorSettings,
+    legendItems, handleDeleteIndicator, handleToggleIndicatorVisible,
+    volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn,
+    period, setPeriod,
+    rightTab, setRightTab,
+    watchlist, watchlistLoading, watchlistBusy, watchlistError, activeInWatchlist, watchlistFull,
+    handleAddToWatchlist, handleRemoveFromWatchlist, suggestQuotes,
+    asking, handleAskAI,
+    searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchExchange, setSearchExchange,
+    resultFilter, setResultFilter, symbolMatches, searchingSymbols, filteredMatches, q,
+    highlightedIndex, setHighlightedIndex, handleSearchKeyDown, selectSymbol,
+    displaySignal, signalError, signalLoading, askedEmpty, askError,
+    prefill, setPrefill,
+    positions, positionsLoading, positionsError, setPositionsReload,
+    applyDrawings, removeTurnDrawings, applyIndicatorChanges, applyCustomIndicators,
+  };
 
-                  {/* Fallback, always available: the live search is a scraped
-                      vendor endpoint and will occasionally miss something real
-                      — never block the user behind it finding a match. */}
-                  <div className={filteredMatches.length > 0 || searchingSymbols ? "border-t border-border" : ""}>
-                    <button onClick={() => selectSymbol(q, searchExchange)}
-                      onMouseEnter={() => setHighlightedIndex(filteredMatches.length)}
-                      className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
-                        highlightedIndex === filteredMatches.length ? "bg-primary/10" : "hover:bg-primary/10"
-                      }`}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                      <span className="text-sm font-bold">{q}</span>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {filteredMatches.length > 0 ? "— not listed above? try" : "on"} {searchExchange}
-                      </span>
-                    </button>
-                    <div className="flex gap-1 px-3 pb-2.5">
-                      {SEARCH_EXCHANGES.map((ex) => (
-                        <button
-                          key={ex}
-                          onClick={() => setSearchExchange(ex)}
-                          className={`px-2 py-0.5 text-[10px] font-mono font-semibold border transition-colors ${
-                            searchExchange === ex
-                              ? "border-primary text-link bg-primary/10"
-                              : "border-border text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {ex}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="px-3 pt-2.5 pb-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest font-mono">
-                    Watchlist · {watchlist.length}/{MAX_WATCHLIST_SIZE}
-                  </div>
-                  {watchlistLoading ? (
-                    <div className="px-3 py-3 text-xs text-muted-foreground text-center">Loading…</div>
-                  ) : watchlist.length === 0 ? (
-                    <div className="px-3 py-3 text-xs text-muted-foreground text-center">
-                      Empty — type a company name or ticker above.
-                    </div>
-                  ) : watchlist.map((w, i) => {
-                    const sq = suggestQuotes[w.symbol];
-                    return (
-                      <div
-                        key={`${w.symbol}-${w.exchange}`}
-                        onMouseEnter={() => setHighlightedIndex(i)}
-                        className={`w-full flex items-center justify-between px-3 py-2 transition-colors group ${
-                          i === highlightedIndex ? "bg-secondary" : "hover:bg-secondary"
-                        }`}
-                      >
-                        <button onClick={() => selectSymbol(w.symbol, w.exchange)} className="flex-1 flex items-center gap-2 text-left">
-                          <ExchangeBadge exchange={w.exchange} />
-                          <span className="text-sm font-bold">{w.symbol}</span>
-                          <span className="text-[10px] text-muted-foreground ml-1.5 font-mono">{w.exchange}</span>
-                        </button>
-                        {sq && (
-                          <span className="text-right mr-2 font-mono">
-                            <span className="block text-xs font-semibold">{CURRENCY[w.exchange] ?? "₹"}{sq.ltp.toFixed(2)}</span>
-                            <span className="block text-[10px] font-semibold" style={{ color: sq.change_percent >= 0 ? "var(--buy)" : "var(--sell)" }}>
-                              {sq.change_percent >= 0 ? "+" : ""}{sq.change_percent.toFixed(2)}%
-                            </span>
-                          </span>
-                        )}
-                        <button onClick={() => handleRemoveFromWatchlist(w.symbol, w.exchange)}
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-sell transition-opacity shrink-0 px-1" title="Remove">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Symbol + price inline */}
-        <div className="flex items-baseline gap-2 min-w-0">
-          <span className="font-bold text-sm">{activeSymbol}</span>
-          <span className="text-[10px] text-muted-foreground font-mono">{activeExchange}</span>
-          {ltp === null ? (
-            <span className="font-mono text-sm text-muted-foreground ml-1" role="status">
-              {connected ? "loading…" : "reconnecting…"}
-            </span>
-          ) : (
-            <>
-              <span className="font-mono text-lg font-bold ml-1">{CURRENCY[activeExchange] ?? "₹"}{ltp.toFixed(2)}</span>
-              {change !== null && changePct !== null && (
-                <span className="font-mono text-xs" style={{ color: isUp ? "var(--buy)" : "var(--sell)" }}>
-                  {isUp ? "+" : "−"}{Math.abs(change).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
-                </span>
-              )}
-              {bid !== null && ask !== null && (
-                <span className="font-mono text-[10px] text-muted-foreground" title={spread !== null ? `Spread ${spread.toFixed(2)}` : undefined}>
-                  <span style={{ color: "var(--buy)" }}>B {bid.toFixed(2)}</span>
-                  {" / "}
-                  <span style={{ color: "var(--sell)" }}>A {ask.toFixed(2)}</span>
-                </span>
-              )}
-            </>
-          )}
-          {!REALTIME_EXCHANGES.has(activeExchange) && (
-            <span className="text-[10px] text-muted-foreground font-mono">{PRICE_DELAY_NOTE}</span>
-          )}
-        </div>
-
-        <div className="flex-1" />
-
-        {/* No icon, no count -- the on-chart legend and pane toolbars already
-            show exactly what's attached; duplicating that count here was
-            redundant. */}
-        <button onClick={() => setIndicatorPickerOpen(true)}
-          className="px-2.5 py-1.5 border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 text-xs font-semibold transition-colors">
-          Indicators
-        </button>
-
-        <IndicatorPickerModal
-          open={indicatorPickerOpen}
-          onClose={() => setIndicatorPickerOpen(false)}
-          entries={pickerEntries}
-          attachedIds={new Set([...indicators.map((i) => i.id), ...volumeProfiles, ...(vsaOn ? ["vsa"] : [])])}
-          onToggle={(entry) => {
-            if (entry.kind === "volume-profile") {
-              setVolumeProfiles((prev) => {
-                const next = new Set(prev);
-                if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
-                return next;
-              });
-              return;
-            }
-            if (entry.kind === "vsa") {
-              setVsaOn((on) => !on);
-              return;
-            }
-            setIndicators((prev) =>
-              prev.some((a) => a.id === entry.id)
-                ? prev.filter((a) => a.id !== entry.id)
-                : [...prev, toAttachedIndicator(entry)],
-            );
-          }}
-          onCreateNew={() => { setEditingIndicator(null); setEditorOpen(true); setIndicatorPickerOpen(false); }}
-          onEdit={(entry) => { setEditingIndicator(entry); setEditorOpen(true); setIndicatorPickerOpen(false); }}
-          onDelete={(id) => {
-            deleteIndicator(id).then(() => {
-              setApiIndicators((prev) => prev.filter((i) => i.id !== id));
-              setIndicators((prev) => prev.filter((a) => a.id !== id)); // detach if it was attached
-            }).catch(() => {});
-          }}
-        />
-
-        <IndicatorEditorModal
-          open={editorOpen}
-          onClose={() => setEditorOpen(false)}
-          initial={editingIndicator}
-          bars={bars}
-          symbol={activeSymbol}
-          exchange={activeExchange}
-          onSaved={(saved) => {
-            setApiIndicators((prev) => {
-              const exists = prev.some((i) => i.id === saved.id);
-              return exists ? prev.map((i) => (i.id === saved.id ? saved : i)) : [...prev, saved];
-            });
-            reattachIfLive(saved.id);
-            // A freshly-created indicator isn't attached anywhere yet -- only
-            // an edit to one already on the chart needs its entry refreshed
-            // (new label/pane/source) so the diffing effect re-attaches it.
-            setIndicators((prev) =>
-              prev.some((a) => a.id === saved.id)
-                ? prev.map((a) => (a.id === saved.id ? toAttachedIndicator(saved) : a))
-                : prev,
-            );
-          }}
-        />
-
-        {settingsTarget && (
-          <IndicatorSettingsModal
-            open
-            onClose={() => setSettingsTarget(null)}
-            label={settingsTarget.label}
-            inputsMeta={settingsTarget.inputsMeta}
-            plotNames={settingsTarget.plotNames}
-            initialParams={indicators.find((i) => i.id === settingsTarget.id)?.params ?? {}}
-            initialStyle={indicators.find((i) => i.id === settingsTarget.id)?.style ?? {}}
-            initialVisibility={indicators.find((i) => i.id === settingsTarget.id)?.visibility ?? {}}
-            onSave={(result: IndicatorSettingsResult) => handleSaveIndicatorSettings(settingsTarget.id, result)}
-          />
-        )}
-
-        <div className="w-px h-5 bg-border mx-1 hidden lg:block" />
-
-        {/* Period selector */}
-        <div className="hidden lg:flex items-center gap-0.5">
-          {PERIODS.map((p) => (
-            <button key={p.label} onClick={() => setPeriod(p.label)}
-              className={`px-2 py-1 text-[11px] font-mono font-semibold transition-colors ${
-                period === p.label ? "bg-primary/15 text-link" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-              }`}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="w-px h-5 bg-border mx-1 hidden lg:block" />
-
-        {!watchlistLoading && (
-          activeInWatchlist ? (
-            <button onClick={() => handleRemoveFromWatchlist(activeSymbol, activeExchange)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 border border-primary/40 bg-primary/10 text-link text-xs font-semibold hover:bg-primary/20 transition-colors">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-              <span className="hidden sm:inline">Watching</span>
-            </button>
-          ) : (
-            <button onClick={handleAddToWatchlist} disabled={watchlistBusy || watchlistFull}
-              title={watchlistFull ? `Watchlist limited to ${MAX_WATCHLIST_SIZE}` : undefined}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border text-muted-foreground text-xs font-semibold hover:border-primary/50 hover:text-link transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              <span className="hidden sm:inline">Watchlist</span>
-            </button>
-          )
-        )}
-
-        <button onClick={handleAskAI} disabled={asking || !SIGNAL_EXCHANGES.has(activeExchange)}
-          title={SIGNAL_EXCHANGES.has(activeExchange) ? undefined : "On-demand analysis is available for NSE and BSE only right now"}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-sm font-bold hover:brightness-110 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
-          {asking ? (
-            <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Analyzing…</>
-          ) : (
-            <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg> Ask AI</>
-          )}
-        </button>
-      </div>
-
-      {watchlistError && (
-        <div className="px-3 py-1 text-[11px] border-b border-border shrink-0" style={{ color: "var(--sell)" }}>{watchlistError}</div>
-      )}
-
-      {/* ── Body: tool rail + chart + right panel ── */}
-      <div className="flex-1 flex min-h-0">
-
-        <DrawingToolbar
-          activeTool={activeTool}
-          onPick={pickTool}
-          onClear={clearMyDrawings}
-          onReset={resetChart}
-          saveConflict={layout.conflict}
-        />
-
-        {/* Chart */}
-        <div className="flex-1 min-w-0 relative bg-card">
-          {barsLoading ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-7 h-7 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-            </div>
-          ) : barsError ? (
-            /* An outage must not render as "no data for this symbol" — that
-               tells the user their symbol is wrong when the server is down. */
-            <div className="absolute inset-0 flex items-center justify-center p-6">
-              <ErrorState message={barsError} onRetry={() => setBarsReload(n => n + 1)} />
-            </div>
-          ) : bars.length === 0 ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" className="mb-2 opacity-50"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-              <p className="text-sm text-muted-foreground">No chart data for {activeSymbol}</p>
-              <p className="text-xs text-muted-foreground mt-1">Try another symbol, or check the exchange.</p>
-            </div>
-          ) : (
-            <CandlestickChart fill bars={bars} signal={displaySignal} livePrice={quote?.ltp}
-              onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
-              onLoadMore={handleLoadMore}
-              legendItems={legendItems}
-              onToggleVisible={handleToggleIndicatorVisible}
-              onDelete={handleDeleteIndicator}
-              onOpenSettings={(id) => {
-                const indicator = indicators.find((i) => i.id === id);
-                const chart = chartRef.current;
-                if (indicator && chart) {
-                  setSettingsTarget({
-                    id, label: indicator.label,
-                    plotNames: chart.getIndicatorPlotNames(id),
-                    inputsMeta: chart.getIndicatorInputsMeta(id) ?? [],
-                  });
-                }
-              }} />
-          )}
-          {indicatorError && (
-            <div className="absolute top-3 right-3 z-20 max-w-xs">
-              <ErrorState compact message={indicatorError.message}
-                onRetry={() => {
-                  const chart = chartRef.current;
-                  const spec = indicatorError.spec;
-                  setIndicatorError(null);
-                  if (chart) attachOne(chart, spec);
-                }} />
-            </div>
-          )}
-        </div>
-
-        {/* Right panel — tabbed */}
-        <div className="w-85 shrink-0 border-l border-border flex flex-col">
-          <div className="flex border-b border-border shrink-0">
-            {([["signal", "Signal"], ["trade", "Trade"], ["positions", "Positions"], ["chat", "Chat"]] as const).map(([k, label]) => (
-              <button key={k} onClick={() => setRightTab(k as typeof rightTab)}
-                className={`flex-1 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors ${rightTab === k ? "text-link border-primary" : "text-muted-foreground border-transparent hover:text-foreground"}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 overflow-y-auto no-scrollbar p-3">
-
-            {/* ── Signal ── */}
-            {rightTab === "signal" && (
-              <SignalPanel
-                symbol={activeSymbol}
-                currency={CURRENCY[activeExchange] ?? "₹"}
-                signal={displaySignal}
-                asking={asking}
-                askError={askError}
-                loadError={signalError}
-                loading={signalLoading}
-                askedEmpty={askedEmpty}
-                onDemandAvailable={SIGNAL_EXCHANGES.has(activeExchange)}
-                onUseSignal={(side, price) => { setPrefill({ side, price }); setRightTab("trade"); }}
-              />
-            )}
-
-            {/* ── Trade ──
-                Always mounted, visibility toggled by class: a conditional
-                render here unmounts OrderTicket on every tab switch away and
-                back, discarding whatever quantity/price the user had typed. */}
-            <div className={rightTab === "trade" ? "" : "hidden"}>
-              {TRADABLE_EXCHANGES.has(activeExchange) ? (
-                <OrderTicket symbol={activeSymbol} exchange={activeExchange} name={activeSymbol}
-                  ltp={ltp} changePct={changePct} prefill={prefill} />
-              ) : (
-                // The account is rupee-denominated — an order here would debit
-                // rupees for a dollar fill with no conversion. Said plainly
-                // instead of letting the user hit the API's 400 blind.
-                <div className="bg-card border border-border p-4 text-center">
-                  <p className="text-sm font-semibold mb-1">Paper trading isn&apos;t available for {activeExchange} yet</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    The paper account is in rupees, and {activeSymbol} prices in{" "}
-                    {CURRENCY[activeExchange] ?? "a different currency"}. NSE and BSE only, for now —
-                    you can still chart {activeSymbol} and ask the AI about it.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* ── Positions ── */}
-            {rightTab === "positions" && (
-              <PositionsPanel
-                positions={positions}
-                loading={positionsLoading}
-                error={positionsError}
-                onRetry={() => setPositionsReload(n => n + 1)}
-                onSelect={selectSymbol}
-              />
-            )}
-
-            {/* ── Chat (agent) ── */}
-            {rightTab === "chat" && (
-              <ChatPanel
-                /* Keyed by symbol: a new symbol is a new conversation, and
-                   remounting resets the messages, the progress feed and any
-                   in-flight turn together. */
-                key={activeSymbol}
-                symbol={activeSymbol}
-                exchange={activeExchange}
-                onDrawings={applyDrawings}
-                onRemoveDrawings={removeTurnDrawings}
-                onIndicatorChanges={applyIndicatorChanges}
-                onCustomIndicator={applyCustomIndicators}
-                onUseTrade={({ side, price, turnId }) => {
-                  // The turn id travels with the prefill, so the order records
-                  // which analysis it came out of.
-                  setPrefill({ side, price, decisionTurnId: turnId });
-                  setRightTab("trade");
-                }}
-              />
-            )}
-
-            {/* The qualification belongs on the surface where trades are
-                actually placed. It was imported here and never rendered, so the
-                one page that can move the paper account carried nothing —
-                while the Signals page, which cannot, carried it. */}
-            {rightTab !== "chat" && (
-              <Disclaimer variant="short" className="mt-4 pt-3 border-t border-border" />
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-    </>
-  );
+  // MobileTerminalLayout doesn't exist yet -- a mobile session renders
+  // nothing until that lands, rather than shipping a build error.
+  return isMobile ? null : <DesktopTerminalLayout {...sharedProps} />;
 }
