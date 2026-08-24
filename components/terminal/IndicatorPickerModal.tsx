@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ApiIndicator } from "@/lib/api/indicators";
 import { INDICATOR_CATEGORIES, type SpecialIndicatorEntry } from "@/lib/indicators/catalog";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
+import { fuzzyFilter } from "@/lib/fuzzyMatch";
 
 /** One row in the picker: either a real DB-backed Pine indicator (a default,
  *  ownerId: null, or the current user's own custom one) or one of the small
@@ -29,10 +30,10 @@ export function IndicatorPickerModal({ open, onClose, entries, attachedIds, onTo
 }) {
   const [query, setQuery] = useState("");
 
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? entries.filter((e) => e.name.toLowerCase().includes(q) || e.category.toLowerCase().includes(q))
-    : entries;
+  const q = query.trim();
+  // Ranked by best match against either field, not just filtered -- "gchn"
+  // now finds "G-Channel" (impossible with plain substring matching).
+  const filtered = fuzzyFilter(entries, q, (e) => [e.name, e.category]);
 
   return (
     <ResponsiveModal open={open} onClose={onClose} ariaLabel="Indicators" maxWidthClass="max-w-lg" maxHeightClass="max-h-[76vh]">
