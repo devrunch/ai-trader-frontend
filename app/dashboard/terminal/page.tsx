@@ -28,6 +28,7 @@ import {
 import { PERIODS, withinVisibilityRange } from "@/lib/periods";
 import { resolveInterval } from "@/lib/customInterval";
 import { aggregateBars } from "@/lib/aggregateBars";
+import { olderBars } from "@/lib/olderBars";
 import type { PineInputMeta } from "@/lib/api/pine";
 import { useChartLayout } from "@/lib/use-chart-layout";
 import { useLiveQuote } from "@/lib/use-live-quote";
@@ -615,13 +616,13 @@ export default function TerminalPage() {
      not a "before this timestamp" cursor. Aggregates with the same
      bucketing as the base fetch above, so a custom candle never straddles
      the old/new fetch boundary differently than it would within one fetch. */
-  const handleLoadMore = useCallback((oldestTimestampMs: number): Promise<ApiOhlcBar[]> => {
+  const handleLoadMore = useCallback((oldestLoadedTime: number): Promise<ApiOhlcBar[]> => {
     const { fetchInterval, bucketSize, guardSessionBoundary } = resolveInterval(candleInterval);
     const nextDays = Math.min(loadedDaysRef.current * 2, 3650);
     if (nextDays <= loadedDaysRef.current) return Promise.resolve([]);
     loadedDaysRef.current = nextDays;
     return getHistorical(activeSymbol, activeExchange, fetchInterval, nextDays)
-      .then(({ bars: b }) => aggregateBars(b, bucketSize, guardSessionBoundary).filter(bar => bar.time * 1000 < oldestTimestampMs))
+      .then(({ bars: b }) => olderBars(aggregateBars(b, bucketSize, guardSessionBoundary), oldestLoadedTime))
       .catch(() => []);
   }, [activeSymbol, activeExchange, candleInterval]);
 

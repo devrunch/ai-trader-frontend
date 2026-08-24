@@ -48,7 +48,7 @@ export interface DesktopTerminalLayoutProps {
   barsLoading: boolean;
   barsError: string;
   setBarsReload: Dispatch<SetStateAction<number>>;
-  handleLoadMore: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
+  handleLoadMore: (oldestLoadedTime: number) => Promise<ApiOhlcBar[]>;
 
   chartRef: RefObject<ChartAdapter | null>;
   setChartReady: Dispatch<SetStateAction<number>>;

@@ -11,7 +11,9 @@ export type ManualDrawKind = "trendline" | "ray" | "hline" | "fib" | "rect";
 
 export interface ChartMountOptions {
   bars: ApiOhlcBar[];
-  onLoadMore?: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
+  // Unix SECONDS, matching ApiOhlcBar.time -- see CandlestickChart's own
+  // onLoadMore doc comment for why this name matters.
+  onLoadMore?: (oldestLoadedTime: number) => Promise<ApiOhlcBar[]>;
   /** Fires on every crosshair move with the bar under the cursor, or `null`
    *  when the cursor leaves the chart -- lets the caller render a TradingView-
    *  style OHLCV readout without reaching into the chart library itself. */

@@ -85,7 +85,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
    *  attach -- what the settings-gear form reads. */
   private inputsMetaByIndicator = new Map<string, PineInputMeta[]>();
   private bars: ApiOhlcBar[] = [];
-  private onLoadMoreFn?: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
+  private onLoadMoreFn?: (oldestLoadedTime: number) => Promise<ApiOhlcBar[]>;
   private loadingMore = false;
   private drawings = new Map<string, DrawingEntry[]>();
   private volumeProfileHandles = new Map<string, VolumeProfileHandle>();

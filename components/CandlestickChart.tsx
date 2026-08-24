@@ -68,8 +68,12 @@ export function CandlestickChart({
   onReady?: (adapter: ChartAdapter) => void;
   /** Older bars than the oldest currently on the chart, for when the user
    *  scrolls/pans back past what's loaded. Returning fewer bars than asked
-   *  for (including none) is read as "nothing further back exists". */
-  onLoadMore?: (oldestTimestampMs: number) => Promise<ApiOhlcBar[]>;
+   *  for (including none) is read as "nothing further back exists".
+   *  `oldestLoadedTime` is Unix SECONDS (the chart's own bar.time unit,
+   *  passed straight through by the adapter) -- a previous "Ms" name here
+   *  caused a real bug where a consumer multiplied by 1000 before comparing,
+   *  which silently broke pan-back-for-more-history on every chart. */
+  onLoadMore?: (oldestLoadedTime: number) => Promise<ApiOhlcBar[]>;
   /** Everything currently attached -- drives both the on-chart legend and,
    *  via getPaneRects()'s indicatorId, which pane each toolbar's delete
    *  button acts on. */
