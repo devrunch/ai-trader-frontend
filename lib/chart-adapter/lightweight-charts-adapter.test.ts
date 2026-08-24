@@ -178,14 +178,45 @@ describe("LightweightChartsAdapter", () => {
     adapter.dispose();
   });
 
-  it("pushLiveTick updates the forming candle in place, not as a new bar", async () => {
+  it("pushLiveTick updates the forming candle in place while still inside its own period", async () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
     const adapter = new LightweightChartsAdapter();
-    await adapter.mount(el, { bars: [{ time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }] });
-    adapter.pushLiveTick(103);
+    await adapter.mount(el, { bars: [
+      { time: 1767000840, open: 99, high: 100, low: 98, close: 99.5, volume: 900 },
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    ] });
+    // 30s after the last bar's own time, well inside its 60s (bar-to-bar
+    // gap-derived) period -- must mutate the existing bar, not append.
+    adapter.pushLiveTick(103, 1767000930);
+    expect(adapter.__test_barCount()).toBe(2);
     expect(adapter.__test_lastBar().close).toBe(103);
     expect(adapter.__test_lastBar().high).toBe(103); // extended, since 103 > original high of 101
+    adapter.dispose();
+  });
+
+  it("pushLiveTick starts a fresh bar once the forming candle's period has actually elapsed", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000840, open: 99, high: 100, low: 98, close: 99.5, volume: 900 },
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    ] });
+    // 90s later -- a full 60s period (from the bar-to-bar gap) has already
+    // passed, so this tick belongs to the NEXT candle, not the last one.
+    adapter.pushLiveTick(103, 1767000990);
+
+    expect(adapter.__test_barCount()).toBe(3);
+    const newBar = adapter.__test_lastBar();
+    expect(newBar.time).toBe(1767000960); // the next 60s-aligned bucket after 1767000900
+    expect(newBar.open).toBe(103);
+    expect(newBar.high).toBe(103);
+    expect(newBar.low).toBe(103);
+    expect(newBar.close).toBe(103);
+    // The previous bar must be untouched -- it's a closed candle now, not
+    // still absorbing ticks.
+    expect(adapter.__test_barAt(1).close).toBe(100.5);
     adapter.dispose();
   });
 

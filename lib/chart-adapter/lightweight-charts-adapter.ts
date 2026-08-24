@@ -201,6 +201,18 @@ export class LightweightChartsAdapter implements ChartAdapter {
     return this.bars[this.bars.length - 1];
   }
 
+  /** Test-only: how many bars the adapter currently holds -- lets a test
+   *  assert pushLiveTick appended a new one rather than just mutating. */
+  __test_barCount(): number {
+    return this.bars.length;
+  }
+
+  /** Test-only: the bar `fromEnd` positions back from the last one (0 =
+   *  the same as __test_lastBar()). */
+  __test_barAt(fromEnd: number): ApiOhlcBar {
+    return this.bars[this.bars.length - 1 - fromEnd];
+  }
+
   dispose(): void {
     this.chart?.remove();
     this.chart = null;
@@ -480,9 +492,36 @@ export class LightweightChartsAdapter implements ChartAdapter {
     line(levels.stopLoss, "#f0525d");
   }
 
-  pushLiveTick(price: number): void {
+  /** A tick landing within the forming candle's own period updates it in
+   *  place (open/high/low mutate, chart doesn't grow a new bar every
+   *  second). A tick landing AFTER that period must start a fresh bar
+   *  instead -- without this check the forming candle absorbed every tick
+   *  forever, however many real minutes actually passed, since nothing
+   *  here re-fetches until the user changes symbol/period/reloads. Found
+   *  live watching Deriv's ~1/sec ticks (frequent enough to make the chart
+   *  visibly frozen on one candle within minutes) -- same bug for every
+   *  exchange, just far less obvious against Kite's slower cadence. */
+  pushLiveTick(price: number, nowSec: number = Math.floor(Date.now() / 1000)): void {
     if (!this.candleSeries || !this.volumeSeries || this.bars.length === 0) return;
     const last = this.bars[this.bars.length - 1];
+    const intervalSec = this.bars.length >= 2
+      ? this.bars[this.bars.length - 1].time - this.bars[this.bars.length - 2].time
+      : 60; // No second bar to measure from yet -- 1m, this app's shortest real interval.
+
+    if (nowSec >= last.time + intervalSec) {
+      // Snapped to the interval grid from the last bar's own time, not raw
+      // nowSec, so a slightly-late tick still lands in the period that's
+      // actually forming rather than one that's subtly off-grid. A real
+      // gap (tab backgrounded, market reopening) skips straight to the
+      // current period -- never backfills fabricated flat candles for
+      // periods with no real tick data.
+      const bucketStart = last.time + Math.floor((nowSec - last.time) / intervalSec) * intervalSec;
+      const newBar = { time: bucketStart, open: price, high: price, low: price, close: price, volume: 0 };
+      this.bars.push(newBar);
+      this.candleSeries.update({ time: newBar.time as never, open: newBar.open, high: newBar.high, low: newBar.low, close: newBar.close });
+      return;
+    }
+
     const updated = { ...last, close: price, high: Math.max(last.high, price), low: Math.min(last.low, price) };
     this.bars[this.bars.length - 1] = updated;
     this.candleSeries.update({ time: updated.time as never, open: updated.open, high: updated.high, low: updated.low, close: updated.close });

@@ -78,7 +78,11 @@ export interface ChartAdapter {
   resize(): void;
 
   setPriceLevels(levels: PriceLevels): void;
-  pushLiveTick(price: number): void;
+  /** nowSec overrides the wall-clock "is a new candle period starting"
+   *  check -- production callers never pass it (real time), tests pass a
+   *  fixed value so a sample bar's timestamp from months ago doesn't
+   *  always look "expired" against the real clock. */
+  pushLiveTick(price: number, nowSec?: number): void;
 
   /** Which symbol/exchange the chart is currently showing -- lets
    *  attachPineIndicator pass real syminfo through to the sandbox so
