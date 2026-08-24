@@ -33,11 +33,13 @@ export const TRADABLE_EXCHANGES = new Set(["NSE", "BSE"]);
 export const SIGNAL_EXCHANGES = new Set(["NSE", "BSE"]);
 
 /**
- * Exchanges fed by the real-time Kite WebSocket. Everything else (NASDAQ,
- * NYSE, …) rides the yfinance poll instead, and that price is genuinely
- * stale — the delay disclosure only belongs on those.
+ * Exchanges with a real live tick feed -- Kite WebSocket for NSE/BSE/MCX,
+ * Deriv WebSocket for FOREX (see deriv_ticker.py; forex/metals moved off
+ * the delayed Twelve Data poll onto this). Everything else (NASDAQ, NYSE,
+ * …) rides the yfinance poll instead, and that price is genuinely stale —
+ * the delay disclosure only belongs on those.
  */
-export const REALTIME_EXCHANGES = new Set(["NSE", "BSE", "MCX"]);
+export const REALTIME_EXCHANGES = new Set(["NSE", "BSE", "MCX", "FOREX"]);
 
 export const CURRENCY: Record<string, string> = { NSE: "₹", BSE: "₹", NASDAQ: "$", NYSE: "$", MCX: "₹", FOREX: "$" };
 
