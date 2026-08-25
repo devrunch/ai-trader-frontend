@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useEffect, useState } from "react";
-import type { ChartAdapter, PaneRect } from "@/lib/chart-adapter/types";
+import type { ChartAdapter, ChartTypeId, PaneRect } from "@/lib/chart-adapter/types";
 import { LightweightChartsAdapter } from "@/lib/chart-adapter/lightweight-charts-adapter";
 import { INDICATOR_COLORS } from "@/lib/chart-adapter/palette";
 import type { ApiOhlcBar } from "@/lib/api";
@@ -58,7 +58,7 @@ function paneRectsEqual(a: PaneRect[], b: PaneRect[]): boolean {
  * the parent so a drawing-tools rail / AI agent can draw on it. */
 export function CandlestickChart({
   bars, signal, height = 320, fill = false, livePrice, onReady, onLoadMore,
-  legendItems = [], onToggleVisible, onDelete, onOpenSettings,
+  chartType = "candles", legendItems = [], onToggleVisible, onDelete, onOpenSettings,
 }: {
   bars: ApiOhlcBar[];
   signal: ChartSignal | null;
@@ -66,6 +66,12 @@ export function CandlestickChart({
   fill?: boolean;
   livePrice?: number;
   onReady?: (adapter: ChartAdapter) => void;
+  /** Main pane's chart type -- read once at mount (a symbol/interval change
+   *  remounts the chart from scratch anyway, see the bars effect below) and
+   *  otherwise driven live via setChartType() in its own effect further down,
+   *  so switching type mid-session doesn't tear down drawings/zoom the way a
+   *  full remount would. */
+  chartType?: ChartTypeId;
   /** Older bars than the oldest currently on the chart, for when the user
    *  scrolls/pans back past what's loaded. Returning fewer bars than asked
    *  for (including none) is read as "nothing further back exists".
@@ -99,6 +105,8 @@ export function CandlestickChart({
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   const onLoadMoreRef = useRef(onLoadMore);
   useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
+  const chartTypeRef = useRef(chartType);
+  useEffect(() => { chartTypeRef.current = chartType; }, [chartType]);
 
   const refreshPaneRects = useCallback(() => {
     const adapter = adapterRef.current;
@@ -114,6 +122,7 @@ export function CandlestickChart({
 
     adapter.mount(el, {
       bars,
+      chartType: chartTypeRef.current,
       onLoadMore: (ts) => onLoadMoreRef.current?.(ts) ?? Promise.resolve([]),
       onCrosshairMove: setHoverBar,
     }).then(() => {
@@ -142,6 +151,16 @@ export function CandlestickChart({
     if (!livePrice || livePrice <= 0) return;
     adapterRef.current?.pushLiveTick(livePrice);
   }, [livePrice]);
+
+  // A chart-type change while already mounted swaps the main series in place
+  // (see LightweightChartsAdapter.setChartType) instead of going through the
+  // bars effect's full remount, which would otherwise blow away zoom and
+  // drawings on every pick. Guarded by adapterRef so this doesn't fire before
+  // the mount effect's own initial chartType (passed via chartTypeRef above)
+  // has applied.
+  useEffect(() => {
+    adapterRef.current?.setChartType(chartType);
+  }, [chartType]);
 
   // Pane geometry has no "layout settled" event to hook -- Pine attaches are
   // async, LWC's own reflow after adding/resizing a pane happens on its own

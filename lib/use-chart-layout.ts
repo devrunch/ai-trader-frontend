@@ -48,7 +48,9 @@ export function useChartLayout({
   chartRef,
   chartReady,
   indicators,
+  chartType,
   onRestoreIndicators,
+  onRestoreChartType,
 }: {
   symbol: string;
   exchange: string;
@@ -56,7 +58,14 @@ export function useChartLayout({
   /** Bumped when the chart instance is (re)created, so a restore can wait for it. */
   chartReady: number;
   indicators: AttachedIndicator[];
+  /** Current chart type, saved alongside drawings/indicators -- a discrete
+   *  choice like an indicator toggle, so it gets its own schedule-on-change
+   *  effect below, the same way indicators already does. */
+  chartType: string;
   onRestoreIndicators: (indicators: AttachedIndicator[]) => void;
+  /** Absent from a layout saved before chart-type selection existed --
+   *  called only when the saved layout actually names one. */
+  onRestoreChartType: (chartType: string) => void;
 }): ChartLayoutState {
   const [conflict, setConflict] = useState(false);
   const version = useRef(0);
@@ -84,6 +93,7 @@ export function useChartLayout({
         // user is still placing) — restoreDrawings applies that consistently.
         chart.restoreDrawings(layout.drawings);
         if (layout.indicators.length) onRestoreIndicators(layout.indicators);
+        if (layout.chartType) onRestoreChartType(layout.chartType);
       })
       // A chart we could not restore is not worth an error banner over the
       // thing the user came here to do. It simply starts empty.
@@ -95,8 +105,9 @@ export function useChartLayout({
     return () => {
       alive = false;
     };
-    // `onRestoreIndicators` is deliberately excluded: it is recreated on every
-    // render of the page, and including it would restore in a loop.
+    // `onRestoreIndicators`/`onRestoreChartType` are deliberately excluded:
+    // they are recreated on every render of the page, and including them
+    // would restore in a loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, chartReady, chartRef]);
 
@@ -106,7 +117,7 @@ export function useChartLayout({
 
     const drawings: SavedDrawing[] = chart.listSavedDrawings([...SAVED_GROUPS]);
 
-    saveChartLayout(symbol, { exchange, drawings, indicators, version: version.current })
+    saveChartLayout(symbol, { exchange, drawings, indicators, chartType, version: version.current })
       .then((saved) => {
         version.current = saved.version;
       })
@@ -114,7 +125,7 @@ export function useChartLayout({
         // 409: another tab saved first. Stop writing rather than clobber it.
         if (err instanceof ApiError && err.status === 409) setConflict(true);
       });
-  }, [chartRef, conflict, exchange, indicators, symbol]);
+  }, [chartRef, chartType, conflict, exchange, indicators, symbol]);
 
   const scheduleSave = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -127,6 +138,14 @@ export function useChartLayout({
     scheduleSave();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indicators.map((i) => i.id).join(",")]);
+
+  /* Same reasoning for chart type -- a discrete pick, not a drag, so it
+     saves on its own rather than waiting for a drawing to also change. */
+  useEffect(() => {
+    if (restoring.current) return;
+    scheduleSave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartType]);
 
   /* A pending save must not fire after the user has navigated away. */
   useEffect(() => () => {

@@ -11,7 +11,7 @@ import type { PineInputMeta } from "@/lib/api/pine";
 import { useChartLayout } from "@/lib/use-chart-layout";
 import { useLiveQuote } from "@/lib/use-live-quote";
 import { CandlestickChart, type LegendItem } from "@/components/CandlestickChart";
-import type { ChartAdapter } from "@/lib/chart-adapter/types";
+import type { ChartAdapter, ChartTypeId } from "@/lib/chart-adapter/types";
 import { OrderTicket, type OrderPrefill } from "@/components/OrderTicket";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ErrorState } from "@/components/ErrorState";
@@ -27,6 +27,7 @@ import type { AttachedIndicator } from "@/lib/api/charts";
 import { TRADABLE_EXCHANGES, SIGNAL_EXCHANGES, REALTIME_EXCHANGES, CURRENCY, MAX_WATCHLIST_SIZE } from "@/lib/terminal-constants";
 import { SymbolSearchModal } from "@/components/terminal/SymbolSearchModal";
 import { IntervalPicker } from "@/components/terminal/IntervalPicker";
+import { ChartTypePicker } from "@/components/terminal/ChartTypePicker";
 
 type LiveQuoteState = ReturnType<typeof useLiveQuote>;
 type SettingsTarget = { id: string; label: string; plotNames: string[]; inputsMeta: PineInputMeta[] } | null;
@@ -90,6 +91,8 @@ export interface DesktopTerminalLayoutProps {
   setPeriod: (label: string) => void;
   candleInterval: string;
   setCandleInterval: Dispatch<SetStateAction<string>>;
+  chartType: ChartTypeId;
+  setChartType: Dispatch<SetStateAction<ChartTypeId>>;
 
   rightTab: "chart" | "signal" | "trade" | "positions" | "chat";
   setRightTab: Dispatch<SetStateAction<"chart" | "signal" | "trade" | "positions" | "chat">>;
@@ -157,6 +160,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
     volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn,
     period, setPeriod,
     candleInterval, setCandleInterval,
+    chartType, setChartType,
     rightTab, setRightTab,
     watchlist, watchlistLoading, watchlistBusy, watchlistError, activeInWatchlist, watchlistFull,
     handleAddToWatchlist, handleRemoveFromWatchlist, suggestQuotes,
@@ -202,6 +206,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
           <span className="font-bold text-sm">{activeSymbol}</span>
           <span className="text-[10px] text-muted-foreground font-mono">{activeExchange}</span>
           <IntervalPicker value={candleInterval} onChange={setCandleInterval} />
+          <ChartTypePicker value={chartType} onChange={setChartType} />
           {ltp === null ? (
             <span className="font-mono text-sm text-muted-foreground ml-1" role="status">
               {connected ? "loading…" : "reconnecting…"}
@@ -389,6 +394,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
             </div>
           ) : (
             <CandlestickChart fill bars={bars} signal={displaySignal} livePrice={quote?.ltp}
+              chartType={chartType}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
               onLoadMore={handleLoadMore}
               legendItems={legendItems}

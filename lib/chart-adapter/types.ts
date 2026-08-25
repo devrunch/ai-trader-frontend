@@ -3,14 +3,19 @@ import type { ChatDrawing } from "@/lib/api/chat";
 import type { SavedDrawing } from "@/lib/api/charts";
 import type { PineInputMeta } from "@/lib/api/pine";
 import type { VolumeProfileMode } from "./volume-profile-primitive";
+import type { ChartTypeId } from "./chart-types/types";
 
-export type { VolumeProfileMode };
+export type { VolumeProfileMode, ChartTypeId };
 
 export type PeriodType = "minute" | "hour" | "day" | "week" | "month";
 export type ManualDrawKind = "trendline" | "ray" | "hline" | "fib" | "rect";
 
 export interface ChartMountOptions {
   bars: ApiOhlcBar[];
+  /** Which chart type to render the main pane as -- defaults to "candles"
+   *  (this app's own default, unchanged from before chart-type selection
+   *  existed) when omitted. */
+  chartType?: ChartTypeId;
   // Unix SECONDS, matching ApiOhlcBar.time -- see CandlestickChart's own
   // onLoadMore doc comment for why this name matters.
   onLoadMore?: (oldestLoadedTime: number) => Promise<ApiOhlcBar[]>;
@@ -78,6 +83,15 @@ export interface ChartAdapter {
   mount(el: HTMLElement, options: ChartMountOptions): Promise<void>;
   dispose(): void;
   resize(): void;
+
+  /** Swaps the main pane's chart type live -- tears down the current main
+   *  series and recreates it via the new type's own renderer, over the
+   *  same `bars` already loaded (no re-fetch). Every OTHER attached thing
+   *  (indicators, drawings, volume) is untouched: none of them derive from
+   *  the main series' own type, only from the shared `bars` data (see
+   *  ChartRendererHandle's own docs for why). */
+  setChartType(id: ChartTypeId): void;
+  getChartType(): ChartTypeId;
 
   setPriceLevels(levels: PriceLevels): void;
   /** nowSec overrides the wall-clock "is a new candle period starting"

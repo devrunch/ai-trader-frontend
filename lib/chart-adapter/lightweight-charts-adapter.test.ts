@@ -541,4 +541,137 @@ describe("LightweightChartsAdapter", () => {
     expect(adapter.__test_markerCount("sig")).toBe(0);
     adapter.dispose();
   });
+
+  it("defaults to candles when no chartType is given, and mounts directly into the requested type otherwise", async () => {
+    const bars = [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      { time: 1767000960, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1200 },
+    ];
+    const elA = document.createElement("div");
+    document.body.appendChild(elA);
+    const defaultAdapter = new LightweightChartsAdapter();
+    await defaultAdapter.mount(elA, { bars });
+    expect(defaultAdapter.getChartType()).toBe("candles");
+    defaultAdapter.dispose();
+
+    const elB = document.createElement("div");
+    document.body.appendChild(elB);
+    const lineAdapter = new LightweightChartsAdapter();
+    await lineAdapter.mount(elB, { bars, chartType: "line" });
+    expect(lineAdapter.getChartType()).toBe("line");
+    expect(lineAdapter.seriesCount()).toBe(2); // main (line) + volume, same as candles
+    lineAdapter.dispose();
+  });
+
+  it("setChartType swaps the main series live and updates getChartType, for every built renderer", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      { time: 1767000960, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1200 },
+    ] });
+    expect(adapter.getChartType()).toBe("candles");
+
+    adapter.setChartType("line");
+    expect(adapter.getChartType()).toBe("line");
+    expect(adapter.seriesCount()).toBe(2); // swapped in place, volume untouched
+
+    adapter.setChartType("area");
+    expect(adapter.getChartType()).toBe("area");
+    expect(adapter.seriesCount()).toBe(2);
+
+    adapter.setChartType("candles");
+    expect(adapter.getChartType()).toBe("candles");
+    expect(adapter.seriesCount()).toBe(2);
+    adapter.dispose();
+  });
+
+  it("setChartType to the already-active type is a no-op", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    ] });
+    expect(() => adapter.setChartType("candles")).not.toThrow();
+    expect(adapter.getChartType()).toBe("candles");
+    expect(adapter.seriesCount()).toBe(2);
+    adapter.dispose();
+  });
+
+  it("an unknown chart type falls back to candles rather than mounting blank", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    // "tpo" is a real ChartTypeId (see chart-types/types.ts's full target-list
+    // union) but has no entry in the registry yet -- rendererFor's own
+    // fallback is what's under test here, not a type error.
+    await adapter.mount(el, { bars: [{ time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }], chartType: "tpo" });
+    expect(adapter.getChartType()).toBe("tpo"); // the adapter still records what was asked for...
+    expect(adapter.seriesCount()).toBe(2); // ...but rendererFor silently gave it a working candles series, not a blank pane
+    adapter.dispose();
+  });
+
+  it("pushLiveTick and loadMore keep working against the underlying bars after switching chart type", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const onLoadMore = vi.fn(async (oldestSec: number) => [
+      { time: oldestSec - 60, open: 99, high: 100, low: 98, close: 99.5, volume: 900 },
+    ]);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, {
+      bars: [
+        { time: 1767000840, open: 99, high: 100, low: 98, close: 99.5, volume: 900 },
+        { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      ],
+      onLoadMore,
+    });
+    adapter.setChartType("area");
+
+    adapter.pushLiveTick(103, 1767000990); // a full period past the last bar -- starts a fresh one
+    expect(adapter.__test_barCount()).toBe(3);
+    expect(adapter.__test_lastBar().close).toBe(103);
+
+    await adapter.__test_triggerLoadMore();
+    expect(onLoadMore).toHaveBeenCalledWith(1767000840);
+    expect(adapter.__test_barCount()).toBe(4);
+    adapter.dispose();
+  });
+
+  it("setChartType re-attaches drawings, price lines, and Volume Profile onto the new series instead of dropping them", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      { time: 1767000960, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1200 },
+    ] });
+
+    adapter.addDrawings([
+      { kind: "segment", points: [{ timestamp: 1767000900, value: 100 }, { timestamp: 1767000960, value: 102 }] },
+      { kind: "priceline", value: 101 },
+    ], "ai:turn1");
+    adapter.attachVolumeProfile("visible", "visible");
+
+    expect(adapter.__test_drawingCount("ai:turn1")).toBe(2);
+    expect(adapter.__test_hasVolumeProfile("visible")).toBe(true);
+
+    // The switch tears down and recreates the main series underneath these --
+    // if setChartType didn't re-attach, this would either throw (stale refs
+    // pointing at a removed series) or silently leave the count at 0.
+    expect(() => adapter.setChartType("line")).not.toThrow();
+
+    expect(adapter.__test_drawingCount("ai:turn1")).toBe(2);
+    expect(adapter.__test_hasVolumeProfile("visible")).toBe(true);
+    expect(adapter.__test_isVolumeProfileVisible("visible")).toBe(true);
+
+    // And the re-attached refs are live, not just present in the bookkeeping
+    // map -- removal after the switch must still work against the new series.
+    expect(() => adapter.removeDrawingsByGroup("ai:turn1")).not.toThrow();
+    expect(adapter.__test_drawingCount("ai:turn1")).toBe(0);
+    expect(() => adapter.removeVolumeProfile("visible")).not.toThrow();
+    expect(adapter.__test_hasVolumeProfile("visible")).toBe(false);
+    adapter.dispose();
+  });
 });

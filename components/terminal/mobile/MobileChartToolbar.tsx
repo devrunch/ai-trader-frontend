@@ -5,16 +5,20 @@ import { BottomSheet } from "./BottomSheet";
 import { DRAW_TOOLS, type DrawTool } from "@/components/terminal/DrawingToolbar";
 import { PERIODS } from "@/lib/periods";
 import { IntervalPicker } from "@/components/terminal/IntervalPicker";
+import { ChartTypePicker } from "@/components/terminal/ChartTypePicker";
+import type { ChartTypeId } from "@/lib/chart-adapter/types";
 
 export function MobileChartToolbar({
   symbol, exchange, currency, ltp, onOpenSearch,
-  activeTool, onPickTool, period, onPickPeriod, candleInterval, onPickInterval, onOpenIndicators,
+  activeTool, onPickTool, period, onPickPeriod, candleInterval, onPickInterval,
+  chartType, onPickChartType, onOpenIndicators,
 }: {
   symbol: string; exchange: string; currency: string; ltp: number | null;
   onOpenSearch: () => void;
   activeTool: string; onPickTool: (tool: DrawTool) => void;
   period: string; onPickPeriod: (label: string) => void;
   candleInterval: string; onPickInterval: (interval: string) => void;
+  chartType: ChartTypeId; onPickChartType: (type: ChartTypeId) => void;
   onOpenIndicators: () => void;
 }) {
   const [drawingSheetOpen, setDrawingSheetOpen] = useState(false);
@@ -28,6 +32,7 @@ export function MobileChartToolbar({
           {ltp !== null && <span className="font-mono text-xs font-semibold ml-1 shrink-0">{currency}{ltp.toFixed(2)}</span>}
         </button>
         <IntervalPicker value={candleInterval} onChange={onPickInterval} />
+        <ChartTypePicker value={chartType} onChange={onPickChartType} />
         <button aria-label="Drawing tools" onClick={() => setDrawingSheetOpen(true)}
           className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="4" y1="20" x2="20" y2="4" /></svg>

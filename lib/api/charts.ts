@@ -52,6 +52,12 @@ export interface ChartLayout {
   exchange: string;
   drawings: SavedDrawing[];
   indicators: AttachedIndicator[];
+  /** Main pane's chart type (e.g. "candles", "line", "area") -- absent on
+   *  any layout saved before chart-type selection existed, or the API's own
+   *  MaxLength/opaque-string floor for a value it never validates against a
+   *  fixed list (see ChartTypeId's own comment for why). Callers treat
+   *  absence the same as "candles". */
+  chartType?: string;
   /** Bumped on every save. Send it back to prove the copy being replaced is current. */
   version: number;
   updatedAt: string | null;
@@ -69,7 +75,7 @@ export const getChartLayout = (symbol: string) =>
  */
 export const saveChartLayout = (
   symbol: string,
-  body: { exchange: string; drawings: SavedDrawing[]; indicators: AttachedIndicator[]; version: number },
+  body: { exchange: string; drawings: SavedDrawing[]; indicators: AttachedIndicator[]; chartType?: string; version: number },
 ) =>
   req<ChartLayout>(`/api/chart-layouts/${encodeURIComponent(symbol)}`, {
     method: "PUT",

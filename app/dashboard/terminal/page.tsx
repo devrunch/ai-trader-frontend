@@ -38,7 +38,7 @@ import { MobileTerminalLayout } from "./MobileTerminalLayout";
 import { useChartStateSync } from "@/lib/use-chart-state-sync";
 import { useMarketStatus } from "@/lib/market-status";
 import type { LegendItem } from "@/components/CandlestickChart";
-import type { ChartAdapter } from "@/lib/chart-adapter/types";
+import type { ChartAdapter, ChartTypeId } from "@/lib/chart-adapter/types";
 import type { OrderPrefill } from "@/components/OrderTicket";
 import type { DrawTool } from "@/components/terminal/DrawingToolbar";
 import type { DisplaySignal } from "@/components/terminal/SignalPanel";
@@ -120,6 +120,10 @@ export default function TerminalPage() {
   // but can be overridden on its own via IntervalPicker without touching
   // `period` at all.
   const [candleInterval, setCandleInterval] = useState(PERIODS[0].interval);
+  // Main-pane chart type -- independent of both period and interval. Applied
+  // live via CandlestickChart's own setChartType effect (no re-fetch, no
+  // remount), so it survives symbol/interval changes without resetting.
+  const [chartType, setChartType] = useState<ChartTypeId>("candles");
   function pickPeriod(label: string) {
     setPeriod(label);
     setCandleInterval((PERIODS.find((p) => p.label === label) ?? PERIODS[0]).interval);
@@ -447,7 +451,9 @@ export default function TerminalPage() {
     chartRef,
     chartReady,
     indicators,
+    chartType,
     onRestoreIndicators: setIndicators,
+    onRestoreChartType: (t) => setChartType(t as ChartTypeId),
   });
 
   function pickTool(t: DrawTool) {
@@ -791,6 +797,7 @@ export default function TerminalPage() {
     volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn,
     period, setPeriod: pickPeriod,
     candleInterval, setCandleInterval,
+    chartType, setChartType,
     rightTab, setRightTab,
     watchlist, watchlistLoading, watchlistBusy, watchlistError, activeInWatchlist, watchlistFull,
     handleAddToWatchlist, handleRemoveFromWatchlist, suggestQuotes,

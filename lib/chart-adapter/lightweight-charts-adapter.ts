@@ -1,4 +1,4 @@
-import { createChart, createSeriesMarkers, CandlestickSeries, HistogramSeries, TickMarkType, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type ISeriesPrimitive, type IPriceLine, type SeriesType, type Time, type LineWidth } from "lightweight-charts";
+import { createChart, createSeriesMarkers, HistogramSeries, TickMarkType, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type ISeriesPrimitive, type IPriceLine, type PriceLineOptions, type SeriesType, type Time, type LineWidth } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChatDrawing } from "@/lib/api/chat";
 import type { SavedDrawing } from "@/lib/api/charts";
@@ -8,6 +8,8 @@ import { createSegmentPrimitive, createRayPrimitive, createRectPrimitive, create
 import { createVolumeProfilePrimitive, type VolumeProfileHandle, type VolumeProfileMode } from "./volume-profile-primitive";
 import { computeVsaColors } from "./vsa-colors";
 import { INDICATOR_COLORS } from "./palette";
+import { rendererFor } from "./chart-types/registry";
+import type { ChartRendererHandle, ChartTypeId } from "./chart-types/types";
 import type { ChartAdapter, ChartMountOptions, ManualDrawKind, PaneRect, PineIndicatorSpec, PlotStyleOverride, PriceLevels } from "./types";
 
 export type { PineIndicatorSpec };
@@ -18,6 +20,20 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 function sameCalendarDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** `bars` is always time-sorted ascending -- binary search rather than a
+ *  maintained lookup map, so there's no separate cache to keep in sync
+ *  across mount/loadMore/pushLiveTick. Only the crosshair readout calls
+ *  this, at most once per mouse-move tick, so O(log n) is plenty. */
+function findBarByTime(bars: ApiOhlcBar[], time: number): ApiOhlcBar | undefined {
+  let lo = 0, hi = bars.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (bars[mid].time === time) return bars[mid];
+    if (bars[mid].time < time) lo = mid + 1; else hi = mid - 1;
+  }
+  return undefined;
 }
 
 /** LWC's LineWidth type is the literal union 1|2|3|4, not `number` -- a
@@ -74,7 +90,14 @@ function makeTickMarkFormatter(getBars: () => ApiOhlcBar[]) {
  * populate from under the Pine model). */
 export class LightweightChartsAdapter implements ChartAdapter {
   private chart: IChartApi | null = null;
-  private candleSeries: ISeriesApi<"Candlestick"> | null = null;
+  /** The main pane's currently-active series -- whichever type setChartType
+   *  last picked. Never literally always a candlestick any more, hence the
+   *  name: everything that anchors to it (price lines, drawing primitives,
+   *  the marker fallback) uses the same generic ISeriesApi surface every
+   *  Lightweight Charts series type shares. */
+  private mainSeries: ISeriesApi<SeriesType> | null = null;
+  private renderer: ChartRendererHandle | null = null;
+  private chartType: ChartTypeId = "candles";
   private volumeSeries: ISeriesApi<"Histogram"> | null = null;
   private pineSeries = new Map<string, ISeriesApi<SeriesType>[]>();
   /** plotshape()/plotchar() output, one combined marker-plugin handle per
@@ -130,8 +153,9 @@ export class LightweightChartsAdapter implements ChartAdapter {
     });
     this.chart = chart;
 
-    this.candleSeries = chart.addSeries(CandlestickSeries, { upColor: "#16c784", downColor: "#f0525d", borderVisible: false, wickUpColor: "#16c784", wickDownColor: "#f0525d" });
-    this.candleSeries.setData(options.bars.map(b => ({ time: b.time as never, open: b.open, high: b.high, low: b.low, close: b.close })));
+    this.chartType = options.chartType ?? "candles";
+    this.renderer = rendererFor(this.chartType)(chart, options.bars);
+    this.mainSeries = this.renderer.series;
 
     this.volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "volume" });
     this.volumeSeries.setData(this.buildVolumeData(options.bars));
@@ -145,22 +169,59 @@ export class LightweightChartsAdapter implements ChartAdapter {
       void this.loadMore();
     });
 
-    // TradingView-style OHLCV readout: read straight off the series' own
-    // crosshair payload rather than re-searching `this.bars` by timestamp.
+    // TradingView-style OHLCV readout: real O/H/L/C from `this.bars`, not
+    // from the main series' own crosshair payload -- that used to work
+    // because the main series was always a Candlestick (open/high/low/close
+    // in its own payload), but Line/Area only ever carry `value`. TradingView
+    // itself keeps showing real OHLC in this readout even in Line mode, so
+    // reading the underlying bar data directly is the correct behavior for
+    // every chart type, not a Candlestick-specific shortcut.
     if (options.onCrosshairMove) {
       const onCrosshairMove = options.onCrosshairMove;
       chart.subscribeCrosshairMove((param) => {
-        const raw = param.time && this.candleSeries ? param.seriesData.get(this.candleSeries) : undefined;
-        if (!param.time || !raw || !("close" in raw) || !("open" in raw)) { onCrosshairMove(null); return; }
-        const candle = raw as unknown as { open: number; high: number; low: number; close: number };
-        const vol = this.volumeSeries ? param.seriesData.get(this.volumeSeries) : undefined;
+        const bar = param.time ? findBarByTime(this.bars, param.time as unknown as number) : undefined;
+        if (!bar) { onCrosshairMove(null); return; }
         onCrosshairMove({
-          time: param.time as unknown as number,
-          open: candle.open, high: candle.high, low: candle.low, close: candle.close,
-          volume: vol && "value" in vol ? (vol as { value: number }).value : 0,
+          time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close,
+          volume: bar.volume ?? 0,
         });
       });
     }
+  }
+
+  setChartType(id: ChartTypeId): void {
+    if (!this.chart || this.chartType === id) return;
+    const oldSeries = this.mainSeries;
+    // Drawings, price lines, and Volume Profile primitives were all created
+    // against the OLD main series (see buildDrawingEntry/attachVolumeProfile)
+    // -- chart.removeSeries() below tears them down along with it, so their
+    // options/identity have to be captured first and re-created against the
+    // new series. None of them derive from the chart TYPE itself (a trendline
+    // is the same trendline whether the candles under it are candles or a
+    // line), so this is what makes them actually stay put across a switch.
+    const priceLineOptions = new Map<IPriceLine, PriceLineOptions>();
+    for (const list of this.drawings.values()) {
+      for (const entry of list) {
+        if (entry.type === "priceline") priceLineOptions.set(entry.ref, entry.ref.options());
+      }
+    }
+
+    if (oldSeries) this.chart.removeSeries(oldSeries);
+    this.chartType = id;
+    this.renderer = rendererFor(id)(this.chart, this.bars);
+    this.mainSeries = this.renderer.series;
+
+    for (const list of this.drawings.values()) {
+      for (const entry of list) {
+        if (entry.type === "primitive") this.mainSeries.attachPrimitive(entry.ref);
+        else entry.ref = this.mainSeries.createPriceLine(priceLineOptions.get(entry.ref)!);
+      }
+    }
+    for (const handle of this.volumeProfileHandles.values()) this.mainSeries.attachPrimitive(handle.primitive);
+  }
+
+  getChartType(): ChartTypeId {
+    return this.chartType;
   }
 
   private async loadMore(): Promise<void> {
@@ -180,7 +241,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
       // already looking at.
       const visibleRange = this.chart?.timeScale().getVisibleLogicalRange();
       this.bars = [...older, ...this.bars];
-      this.candleSeries!.setData(this.bars.map(b => ({ time: b.time as never, open: b.open, high: b.high, low: b.low, close: b.close })));
+      this.renderer!.setData(this.bars);
       this.volumeSeries!.setData(this.buildVolumeData(this.bars));
       if (visibleRange) {
         this.chart?.timeScale().setVisibleLogicalRange({ from: visibleRange.from + older.length, to: visibleRange.to + older.length });
@@ -216,7 +277,8 @@ export class LightweightChartsAdapter implements ChartAdapter {
   dispose(): void {
     this.chart?.remove();
     this.chart = null;
-    this.candleSeries = null;
+    this.mainSeries = null;
+    this.renderer = null;
     this.volumeSeries = null;
     this.pineSeries.clear();
     this.volumeProfileHandles.clear();
@@ -227,16 +289,16 @@ export class LightweightChartsAdapter implements ChartAdapter {
   }
 
   attachVolumeProfile(id: string, mode: VolumeProfileMode): void {
-    if (!this.candleSeries || this.volumeProfileHandles.has(id)) return;
+    if (!this.mainSeries || this.volumeProfileHandles.has(id)) return;
     const handle = createVolumeProfilePrimitive(() => this.bars, mode);
-    this.candleSeries.attachPrimitive(handle.primitive);
+    this.mainSeries.attachPrimitive(handle.primitive);
     this.volumeProfileHandles.set(id, handle);
   }
 
   removeVolumeProfile(id: string): void {
     const handle = this.volumeProfileHandles.get(id);
-    if (!handle || !this.candleSeries) return;
-    this.candleSeries.detachPrimitive(handle.primitive);
+    if (!handle || !this.mainSeries) return;
+    this.mainSeries.detachPrimitive(handle.primitive);
     this.volumeProfileHandles.delete(id);
   }
 
@@ -337,7 +399,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
 
   resize(): void { /* LWC auto-sizes via its own container ResizeObserver when the chart is created with autoSize; explicit resize kept for interface parity */ }
 
-  seriesCount(): number { return (this.candleSeries ? 1 : 0) + (this.volumeSeries ? 1 : 0) + [...this.pineSeries.values()].reduce((n, s) => n + s.length, 0); }
+  seriesCount(): number { return (this.mainSeries ? 1 : 0) + (this.volumeSeries ? 1 : 0) + [...this.pineSeries.values()].reduce((n, s) => n + s.length, 0); }
 
   /** Test-only: how many panes the chart currently has. */
   __test_paneCount(): number { return this.chart?.panes().length ?? 0; }
@@ -441,7 +503,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
     // so no pane exists there to anchor to) -- a rare case, not a crash.
     const allMarkers = markerPlots.flatMap((m) => m.markers);
     if (allMarkers.length > 0) {
-      const anchor = series[0] ?? this.candleSeries;
+      const anchor = series[0] ?? this.mainSeries;
       if (anchor) this.markerHandles.set(spec.id, createSeriesMarkers(anchor, allMarkers));
     }
     // Style overrides are per-plot rendering settings, saved separately from
@@ -485,8 +547,8 @@ export class LightweightChartsAdapter implements ChartAdapter {
   }
 
   setPriceLevels(levels: PriceLevels): void {
-    if (!this.candleSeries) return;
-    const line = (value: number | undefined, color: string) => value != null && this.candleSeries!.createPriceLine({ price: value, color, lineStyle: 2, lineWidth: 1 });
+    if (!this.mainSeries) return;
+    const line = (value: number | undefined, color: string) => value != null && this.mainSeries!.createPriceLine({ price: value, color, lineStyle: 2, lineWidth: 1 });
     line(levels.entry, "#8b8a9e");
     line(levels.target, "#16c784");
     line(levels.stopLoss, "#f0525d");
@@ -502,7 +564,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
    *  visibly frozen on one candle within minutes) -- same bug for every
    *  exchange, just far less obvious against Kite's slower cadence. */
   pushLiveTick(price: number, nowSec: number = Math.floor(Date.now() / 1000)): void {
-    if (!this.candleSeries || !this.volumeSeries || this.bars.length === 0) return;
+    if (!this.renderer || !this.volumeSeries || this.bars.length === 0) return;
     const last = this.bars[this.bars.length - 1];
     const intervalSec = this.bars.length >= 2
       ? this.bars[this.bars.length - 1].time - this.bars[this.bars.length - 2].time
@@ -518,17 +580,17 @@ export class LightweightChartsAdapter implements ChartAdapter {
       const bucketStart = last.time + Math.floor((nowSec - last.time) / intervalSec) * intervalSec;
       const newBar = { time: bucketStart, open: price, high: price, low: price, close: price, volume: 0 };
       this.bars.push(newBar);
-      this.candleSeries.update({ time: newBar.time as never, open: newBar.open, high: newBar.high, low: newBar.low, close: newBar.close });
+      this.renderer.updateBar(newBar);
       return;
     }
 
     const updated = { ...last, close: price, high: Math.max(last.high, price), low: Math.min(last.low, price) };
     this.bars[this.bars.length - 1] = updated;
-    this.candleSeries.update({ time: updated.time as never, open: updated.open, high: updated.high, low: updated.low, close: updated.close });
+    this.renderer.updateBar(updated);
   }
 
   addDrawings(drawings: ChatDrawing[], groupId: string): void {
-    if (!this.candleSeries) return;
+    if (!this.mainSeries) return;
     const list = this.drawings.get(groupId) ?? [];
     for (const d of drawings) {
       const entry = this.buildDrawingEntry(d);
@@ -538,7 +600,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
   }
 
   private buildDrawingEntry(d: ChatDrawing): DrawingEntry | null {
-    if (!this.candleSeries) return null;
+    if (!this.mainSeries) return null;
     const toPoints = (pts?: { timestamp: number; value: number }[]): [DrawPoint, DrawPoint] | null =>
       pts && pts.length >= 2 ? [{ time: pts[0].timestamp, value: pts[0].value }, { time: pts[1].timestamp, value: pts[1].value }] : null;
 
@@ -546,23 +608,23 @@ export class LightweightChartsAdapter implements ChartAdapter {
       const points = toPoints(d.points);
       if (!points) return null;
       const primitive = createSegmentPrimitive({ points, color: d.color || "#6c5ce7" });
-      this.candleSeries.attachPrimitive(primitive);
+      this.mainSeries.attachPrimitive(primitive);
       return { type: "primitive", ref: primitive };
     }
     if (d.kind === "priceline" && d.value != null) {
-      const ref = this.candleSeries.createPriceLine({ price: d.value, color: d.color || "#8b8a9e", lineStyle: 2, lineWidth: 1 });
+      const ref = this.mainSeries.createPriceLine({ price: d.value, color: d.color || "#8b8a9e", lineStyle: 2, lineWidth: 1 });
       return { type: "priceline", ref };
     }
     if (d.kind === "fibonacci") {
       const points = toPoints(d.points);
       if (!points) return null;
       const primitive = createFibonacciPrimitive({ points, color: d.color });
-      this.candleSeries.attachPrimitive(primitive);
+      this.mainSeries.attachPrimitive(primitive);
       return { type: "primitive", ref: primitive };
     }
     if (d.kind === "trade_marker" && d.timestamp != null && d.value != null) {
       const primitive = createTradeMarkerPrimitive({ point: { time: d.timestamp, value: d.value }, side: d.side ?? "BUY", color: d.color });
-      this.candleSeries.attachPrimitive(primitive);
+      this.mainSeries.attachPrimitive(primitive);
       return { type: "primitive", ref: primitive };
     }
     // "series" (an arbitrary multi-point agent-picked line, e.g. a moving
@@ -586,10 +648,10 @@ export class LightweightChartsAdapter implements ChartAdapter {
 
   removeDrawingsByGroup(groupId: string): void {
     const list = this.drawings.get(groupId);
-    if (!list || !this.candleSeries) return;
+    if (!list || !this.mainSeries) return;
     for (const entry of list) {
-      if (entry.type === "primitive") this.candleSeries.detachPrimitive(entry.ref);
-      else this.candleSeries.removePriceLine(entry.ref);
+      if (entry.type === "primitive") this.mainSeries.detachPrimitive(entry.ref);
+      else this.mainSeries.removePriceLine(entry.ref);
     }
     this.drawings.delete(groupId);
   }

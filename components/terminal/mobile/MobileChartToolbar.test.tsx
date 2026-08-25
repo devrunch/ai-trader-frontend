@@ -8,6 +8,7 @@ const baseProps = {
   onOpenSearch: vi.fn(), activeTool: "cursor", onPickTool: vi.fn(),
   period: "1D", onPickPeriod: vi.fn(), onOpenIndicators: vi.fn(),
   candleInterval: "1m", onPickInterval: vi.fn(),
+  chartType: "candles" as const, onPickChartType: vi.fn(),
 };
 
 describe("MobileChartToolbar", () => {

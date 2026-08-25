@@ -37,6 +37,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
     legendItems, handleDeleteIndicator, handleToggleIndicatorVisible,
     period, setPeriod,
     candleInterval, setCandleInterval,
+    chartType, setChartType,
     rightTab, setRightTab,
     displaySignal, signalError, signalLoading, askedEmpty, askError, asking, handleAskAI,
     prefill, setPrefill,
@@ -62,6 +63,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
           activeTool={activeTool} onPickTool={pickTool}
           period={period} onPickPeriod={setPeriod}
           candleInterval={candleInterval} onPickInterval={setCandleInterval}
+          chartType={chartType} onPickChartType={setChartType}
           onOpenIndicators={() => setIndicatorPickerOpen(true)}
         />
         <div className="flex-1 min-w-0 relative bg-card">
@@ -81,6 +83,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
             </div>
           ) : (
             <CandlestickChart fill bars={bars} signal={displaySignal} livePrice={quote?.ltp}
+              chartType={chartType}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
               onLoadMore={handleLoadMore}
               legendItems={legendItems}
