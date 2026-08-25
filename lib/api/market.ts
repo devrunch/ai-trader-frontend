@@ -102,6 +102,15 @@ export const getHistorical = (symbol: string, exchange = "NSE", interval = "15m"
     `/api/market/historical/${symbol}?exchange=${exchange}&interval=${interval}&days=${days}`
   );
 
+/** Real ECN tick count since `sinceEpochSec` -- the still-forming candle's
+ *  live volume, FOREX/metals only. `count: null` means this symbol isn't
+ *  Dukascopy-covered or the vendor call failed; never a fabricated 0 (see
+ *  the signals-side get_tick_volume's own docstring). */
+export const getTickVolume = (symbol: string, sinceEpochSec: number) =>
+  req<{ count: number | null }>(
+    `/api/market/tick-volume/${symbol}?since=${sinceEpochSec}`
+  );
+
 export interface SymbolMatch {
   symbol: string;
   name: string;

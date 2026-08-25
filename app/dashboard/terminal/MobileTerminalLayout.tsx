@@ -28,7 +28,7 @@ import { TRADABLE_EXCHANGES, SIGNAL_EXCHANGES, CURRENCY } from "@/lib/terminal-c
 export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
   const {
     activeSymbol, activeExchange, quote, ltp, changePct,
-    bars, barsLoading, barsError, setBarsReload, handleLoadMore,
+    bars, barsLoading, barsError, setBarsReload, handleLoadMore, onPollVolume,
     chartRef, setChartReady, activeTool, pickTool,
     indicators, setIndicators, indicatorPickerOpen, setIndicatorPickerOpen, pickerEntries, setApiIndicators,
     editorOpen, setEditorOpen, editingIndicator, setEditingIndicator, reattachIfLive,
@@ -86,6 +86,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
               chartType={chartType}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
               onLoadMore={handleLoadMore}
+              onPollVolume={onPollVolume}
               legendItems={legendItems}
               onToggleVisible={handleToggleIndicatorVisible}
               onDelete={handleDeleteIndicator}

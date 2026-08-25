@@ -2,6 +2,11 @@ import type { ChartRendererFactory, ChartTypeId } from "./types";
 import { createCandlesRenderer } from "./candles";
 import { createLineRenderer } from "./line";
 import { createAreaRenderer } from "./area";
+import { createBarsRenderer } from "./bars";
+import { createBaselineRenderer } from "./baseline";
+import { createColumnsRenderer } from "./columns";
+import { createStepLineRenderer } from "./step-line";
+import { createLineMarkersRenderer } from "./line-markers";
 
 /** id -> label -> factory, in picker display order. Only types with a real,
  *  working factory belong here -- see ChartTypeId's own comment for the
@@ -10,8 +15,13 @@ import { createAreaRenderer } from "./area";
  *  changes. */
 export const CHART_TYPES: { id: ChartTypeId; label: string; create: ChartRendererFactory }[] = [
   { id: "candles", label: "Candles", create: createCandlesRenderer },
+  { id: "bars", label: "Bars", create: createBarsRenderer },
   { id: "line", label: "Line", create: createLineRenderer },
+  { id: "line-markers", label: "Line with Markers", create: createLineMarkersRenderer },
+  { id: "step-line", label: "Step Line", create: createStepLineRenderer },
   { id: "area", label: "Area", create: createAreaRenderer },
+  { id: "baseline", label: "Baseline", create: createBaselineRenderer },
+  { id: "columns", label: "Columns", create: createColumnsRenderer },
 ];
 
 const BY_ID = new Map(CHART_TYPES.map((t) => [t.id, t.create]));

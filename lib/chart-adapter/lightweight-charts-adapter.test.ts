@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { LightweightChartsAdapter } from "./lightweight-charts-adapter";
 import { runPineIndicator } from "@/lib/api/pine";
+import { CHART_TYPES } from "./chart-types/registry";
 
 // Real shape: {time (ms), value} points, not raw numbers -- matches what
 // the actual sandbox returns (see app/pine_sandbox/worker.mjs).
@@ -637,6 +638,115 @@ describe("LightweightChartsAdapter", () => {
     expect(onLoadMore).toHaveBeenCalledWith(1767000840);
     expect(adapter.__test_barCount()).toBe(4);
     adapter.dispose();
+  });
+
+  it("every registered chart type mounts cleanly and can receive a live tick", async () => {
+    // Real construction, not just a type check -- an invalid option combo
+    // (e.g. a bad BaselineSeries baseValue shape) throws at chart.addSeries()
+    // time, which tsc can't catch since the options are all individually
+    // valid TypeScript, just possibly wrong together.
+    for (const { id } of CHART_TYPES) {
+      const el = document.createElement("div");
+      document.body.appendChild(el);
+      const adapter = new LightweightChartsAdapter();
+      await adapter.mount(el, {
+        bars: [
+          { time: 1767000840, open: 99, high: 100, low: 98, close: 99.5, volume: 900 },
+          { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+        ],
+        chartType: id,
+      });
+      expect(adapter.getChartType()).toBe(id);
+      expect(adapter.seriesCount()).toBe(2);
+      expect(() => adapter.pushLiveTick(103, 1767000990)).not.toThrow();
+      adapter.dispose();
+    }
+  });
+
+  it("onPollVolume fires immediately at mount, and its result overwrites just the forming bar's volume", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const onPollVolume = vi.fn().mockResolvedValue(42);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, {
+      bars: [
+        { time: 1767000840, open: 99, high: 100, low: 98, close: 99.5, volume: 900 },
+        { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+      ],
+      onPollVolume,
+    });
+    // The mount promise resolves once the series/data are set up, but the
+    // poll itself is fire-and-forget (`void this.pollVolume()`) -- give its
+    // own microtask a turn to land before asserting on its effect.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onPollVolume).toHaveBeenCalledWith(1767000900); // the LAST (forming) bar's own start time
+    expect(adapter.__test_lastBar().volume).toBe(42);
+    // The older, already-closed bar is untouched -- only the forming one polls.
+    expect(adapter.__test_barAt(1).volume).toBe(900);
+    adapter.dispose();
+  });
+
+  it("a null onPollVolume result leaves the current volume untouched, not zeroed", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const onPollVolume = vi.fn().mockResolvedValue(null);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, {
+      bars: [{ time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }],
+      onPollVolume,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onPollVolume).toHaveBeenCalled();
+    expect(adapter.__test_lastBar().volume).toBe(1000); // untouched -- null is "couldn't check", not "zero"
+    adapter.dispose();
+  });
+
+  it("re-polls on a fixed interval and stops once disposed", async () => {
+    vi.useFakeTimers();
+    try {
+      const el = document.createElement("div");
+      document.body.appendChild(el);
+      const onPollVolume = vi.fn().mockResolvedValue(1);
+      const adapter = new LightweightChartsAdapter();
+      await adapter.mount(el, {
+        bars: [{ time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }],
+        onPollVolume,
+      });
+      await vi.advanceTimersByTimeAsync(0); // the immediate at-mount poll
+      expect(onPollVolume).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(onPollVolume).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(onPollVolume).toHaveBeenCalledTimes(3);
+
+      adapter.dispose();
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(onPollVolume).toHaveBeenCalledTimes(3); // no further calls after dispose
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("without onPollVolume, no polling ever happens", async () => {
+    vi.useFakeTimers();
+    try {
+      const el = document.createElement("div");
+      document.body.appendChild(el);
+      const adapter = new LightweightChartsAdapter();
+      await adapter.mount(el, {
+        bars: [{ time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }],
+      });
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(adapter.__test_lastBar().volume).toBe(1000); // never touched
+      adapter.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("setChartType re-attaches drawings, price lines, and Volume Profile onto the new series instead of dropping them", async () => {

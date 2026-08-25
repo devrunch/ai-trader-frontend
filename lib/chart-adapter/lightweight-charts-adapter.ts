@@ -18,6 +18,14 @@ type DrawingEntry = { type: "primitive"; ref: ISeriesPrimitive<Time> } | { type:
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/** How often the still-forming bar's volume is re-polled (see
+ *  ChartMountOptions.onPollVolume) -- 5s is the floor a real stress test
+ *  against Dukascopy confirmed safe (15s/10s/5s all clean, no 429s over a
+ *  5-minute run; not tested faster). Not configurable per-call: every
+ *  caller polling the same live symbol should hit that floor uniformly,
+ *  not each pick its own rate. */
+const POLL_VOLUME_MS = 5_000;
+
 function sameCalendarDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -110,6 +118,8 @@ export class LightweightChartsAdapter implements ChartAdapter {
   private bars: ApiOhlcBar[] = [];
   private onLoadMoreFn?: (oldestLoadedTime: number) => Promise<ApiOhlcBar[]>;
   private loadingMore = false;
+  private onPollVolumeFn?: (bucketStartSec: number) => Promise<number | null>;
+  private volumePollTimer: ReturnType<typeof setInterval> | null = null;
   private drawings = new Map<string, DrawingEntry[]>();
   private volumeProfileHandles = new Map<string, VolumeProfileHandle>();
   private containerEl: HTMLElement | null = null;
@@ -142,6 +152,28 @@ export class LightweightChartsAdapter implements ChartAdapter {
     return bars.map((b, i) => ({ time: b.time as never, value: b.volume ?? 0, color: colors[i] }));
   }
 
+  /** Overwrites just the LAST bar's volume and redraws the histogram --
+   *  full setData() rather than a single-point update() because coloring
+   *  (VSA especially) depends on neighboring bars' own volume, not only
+   *  this one's. */
+  private setLastBarVolume(volume: number): void {
+    if (!this.volumeSeries || this.bars.length === 0) return;
+    const last = this.bars[this.bars.length - 1];
+    this.bars[this.bars.length - 1] = { ...last, volume };
+    this.volumeSeries.setData(this.buildVolumeData(this.bars));
+  }
+
+  /** Re-reads the still-forming bar's own volume from onPollVolumeFn --
+   *  null (a vendor gap, or a symbol this doesn't apply to) leaves the
+   *  current value alone rather than zeroing out real volume the last poll
+   *  or the initial historical fetch already found. */
+  private async pollVolume(): Promise<void> {
+    if (!this.onPollVolumeFn || this.bars.length === 0) return;
+    const bucketStart = this.bars[this.bars.length - 1].time;
+    const volume = await this.onPollVolumeFn(bucketStart);
+    if (volume != null) this.setLastBarVolume(volume);
+  }
+
   async mount(el: HTMLElement, options: ChartMountOptions): Promise<void> {
     this.bars = options.bars;
     this.onLoadMoreFn = options.onLoadMore;
@@ -160,6 +192,12 @@ export class LightweightChartsAdapter implements ChartAdapter {
     this.volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "volume" });
     this.volumeSeries.setData(this.buildVolumeData(options.bars));
     chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+
+    this.onPollVolumeFn = options.onPollVolume;
+    if (this.onPollVolumeFn) {
+      void this.pollVolume(); // don't wait a full interval for the first real number
+      this.volumePollTimer = setInterval(() => void this.pollVolume(), POLL_VOLUME_MS);
+    }
 
     // Pans back past the loaded range -> pull more history. Mirrors
     // klinecharts' own `forward: true` DataLoader contract from
@@ -275,6 +313,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
   }
 
   dispose(): void {
+    if (this.volumePollTimer != null) { clearInterval(this.volumePollTimer); this.volumePollTimer = null; }
     this.chart?.remove();
     this.chart = null;
     this.mainSeries = null;

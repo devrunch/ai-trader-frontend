@@ -23,6 +23,15 @@ export interface ChartMountOptions {
    *  when the cursor leaves the chart -- lets the caller render a TradingView-
    *  style OHLCV readout without reaching into the chart library itself. */
   onCrosshairMove?: (bar: ApiOhlcBar | null) => void;
+  /** Polled on a fixed interval (see the adapter's own POLL_VOLUME_MS) with
+   *  the still-forming bar's own start time, for symbols whose real volume
+   *  only updates on a fresh historical fetch otherwise -- FOREX/metals via
+   *  Dukascopy, see getTickVolume's own docs for why this can't just be
+   *  read off a live price tick. Returning null (vendor gap, or a symbol
+   *  this doesn't apply to) leaves the current volume untouched rather than
+   *  zeroing it; omit entirely to disable polling (equities don't need it,
+   *  Kite's own volume already arrives live). */
+  onPollVolume?: (bucketStartSec: number) => Promise<number | null>;
 }
 
 export interface PriceLevels {

@@ -57,7 +57,7 @@ function paneRectsEqual(a: PaneRect[], b: PaneRect[]): boolean {
  * for a fixed size (landing demo). `onReady` hands the adapter instance to
  * the parent so a drawing-tools rail / AI agent can draw on it. */
 export function CandlestickChart({
-  bars, signal, height = 320, fill = false, livePrice, onReady, onLoadMore,
+  bars, signal, height = 320, fill = false, livePrice, onReady, onLoadMore, onPollVolume,
   chartType = "candles", legendItems = [], onToggleVisible, onDelete, onOpenSettings,
 }: {
   bars: ApiOhlcBar[];
@@ -72,6 +72,11 @@ export function CandlestickChart({
    *  so switching type mid-session doesn't tear down drawings/zoom the way a
    *  full remount would. */
   chartType?: ChartTypeId;
+  /** Keeps the still-forming bar's volume live for symbols whose real
+   *  volume only refreshes on a fresh historical fetch otherwise -- see
+   *  ChartMountOptions.onPollVolume's own docs. Omit for symbols that don't
+   *  need it (equities already get live volume from Kite). */
+  onPollVolume?: (bucketStartSec: number) => Promise<number | null>;
   /** Older bars than the oldest currently on the chart, for when the user
    *  scrolls/pans back past what's loaded. Returning fewer bars than asked
    *  for (including none) is read as "nothing further back exists".
@@ -105,6 +110,8 @@ export function CandlestickChart({
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   const onLoadMoreRef = useRef(onLoadMore);
   useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
+  const onPollVolumeRef = useRef(onPollVolume);
+  useEffect(() => { onPollVolumeRef.current = onPollVolume; }, [onPollVolume]);
   const chartTypeRef = useRef(chartType);
   useEffect(() => { chartTypeRef.current = chartType; }, [chartType]);
 
@@ -125,6 +132,14 @@ export function CandlestickChart({
       chartType: chartTypeRef.current,
       onLoadMore: (ts) => onLoadMoreRef.current?.(ts) ?? Promise.resolve([]),
       onCrosshairMove: setHoverBar,
+      // Presence, not just behavior, matters here: the adapter only starts
+      // its poll timer when this is set at all (see mount()'s own check),
+      // so an absent onPollVolume prop must stay absent, not become a
+      // wrapper that always resolves null -- that would run a 5s timer for
+      // every chart, FOREX or not, for nothing. Read from the ref (same as
+      // chartTypeRef above), not the raw prop, so this effect's own
+      // dependency array doesn't need onPollVolume in it.
+      onPollVolume: onPollVolumeRef.current ? (ts) => onPollVolumeRef.current?.(ts) ?? Promise.resolve(null) : undefined,
     }).then(() => {
       if (cancelled) { adapter.dispose(); return; }
       adapterRef.current = adapter;

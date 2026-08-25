@@ -50,6 +50,10 @@ export interface DesktopTerminalLayoutProps {
   barsError: string;
   setBarsReload: Dispatch<SetStateAction<number>>;
   handleLoadMore: (oldestLoadedTime: number) => Promise<ApiOhlcBar[]>;
+  /** Set only when the active symbol needs it (FOREX/metals) -- see
+   *  CandlestickChart's own onPollVolume doc for why presence, not just
+   *  behavior, matters here. */
+  onPollVolume?: (bucketStartSec: number) => Promise<number | null>;
 
   chartRef: RefObject<ChartAdapter | null>;
   setChartReady: Dispatch<SetStateAction<number>>;
@@ -150,7 +154,7 @@ export interface DesktopTerminalLayoutProps {
 export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
   const {
     activeSymbol, activeExchange, quote, connected, ltp, change, changePct, isUp, bid, ask, spread,
-    bars, barsLoading, barsError, setBarsReload, handleLoadMore,
+    bars, barsLoading, barsError, setBarsReload, handleLoadMore, onPollVolume,
     chartRef, setChartReady, activeTool, pickTool, clearMyDrawings, resetChart, layout,
     indicators, setIndicators, indicatorPickerOpen, setIndicatorPickerOpen, pickerEntries, setApiIndicators,
     editorOpen, setEditorOpen, editingIndicator, setEditingIndicator, reattachIfLive,
@@ -397,6 +401,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
               chartType={chartType}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
               onLoadMore={handleLoadMore}
+              onPollVolume={onPollVolume}
               legendItems={legendItems}
               onToggleVisible={handleToggleIndicatorVisible}
               onDelete={handleDeleteIndicator}

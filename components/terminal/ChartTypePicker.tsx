@@ -4,18 +4,24 @@ import { useState } from "react";
 import { CHART_TYPES } from "@/lib/chart-adapter/chart-types/registry";
 import type { ChartTypeId } from "@/lib/chart-adapter/types";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
+import { CHART_TYPE_ICONS } from "./chartTypeIcons";
 
 /** Main-pane chart-type control, beside IntervalPicker in the same header
- *  row. Only lists types with a real registered renderer (CHART_TYPES) --
- *  the full TradingView-style target list lives in ChartTypeId itself, but
- *  a not-yet-built type has nothing to pick here until its own renderer
- *  file lands in the registry. */
+ *  row. An icon-only trigger, same as TradingView's own chart-type button --
+ *  the other pickers next to it (period pills, IntervalPicker) are already
+ *  compact text, so this one carrying its own "Candles"/"Line" label too
+ *  crowded the row; the icon alone reads fine once you know the row is
+ *  chart controls. Only lists types with a real registered renderer
+ *  (CHART_TYPES) -- the full TradingView-style target list lives in
+ *  ChartTypeId itself, but a not-yet-built type has nothing to pick here
+ *  until its own renderer file lands in the registry. */
 export function ChartTypePicker({ value, onChange }: {
   value: ChartTypeId;
   onChange: (type: ChartTypeId) => void;
 }) {
   const [open, setOpen] = useState(false);
   const current = CHART_TYPES.find((t) => t.id === value);
+  const currentIcon = CHART_TYPE_ICONS[value];
 
   function pick(id: ChartTypeId) {
     onChange(id);
@@ -26,10 +32,11 @@ export function ChartTypePicker({ value, onChange }: {
     <>
       <button
         onClick={() => setOpen(true)}
-        title="Change chart type"
-        className="text-[10px] font-mono font-semibold text-muted-foreground hover:text-foreground px-1 py-0.5 border border-transparent hover:border-border transition-colors"
+        title={`Chart type: ${current?.label ?? value}`}
+        aria-label="Change chart type"
+        className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground border border-transparent hover:border-border transition-colors shrink-0"
       >
-        {current?.label ?? value}
+        {currentIcon ?? <span className="text-[10px] font-mono font-semibold">{value}</span>}
       </button>
 
       <ResponsiveModal open={open} onClose={() => setOpen(false)} ariaLabel="Change chart type" maxWidthClass="max-w-xs" maxHeightClass="max-h-[70vh]">
@@ -45,10 +52,11 @@ export function ChartTypePicker({ value, onChange }: {
             <button
               key={t.id}
               onClick={() => pick(t.id)}
-              className={`px-3 py-2 text-left text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2.5 px-3 py-2 text-left text-sm font-medium transition-colors ${
                 value === t.id ? "bg-primary/15 text-link" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
               }`}
             >
+              <span className="shrink-0">{CHART_TYPE_ICONS[t.id]}</span>
               {t.label}
             </button>
           ))}
