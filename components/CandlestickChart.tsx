@@ -57,7 +57,7 @@ function paneRectsEqual(a: PaneRect[], b: PaneRect[]): boolean {
  * for a fixed size (landing demo). `onReady` hands the adapter instance to
  * the parent so a drawing-tools rail / AI agent can draw on it. */
 export function CandlestickChart({
-  bars, signal, height = 320, fill = false, livePrice, onReady, onLoadMore, onPollVolume,
+  bars, signal, height = 320, fill = false, livePrice, onReady, onLoadMore, onPollVolume, onFetchTicks,
   chartType = "candles", legendItems = [], onToggleVisible, onDelete, onOpenSettings,
 }: {
   bars: ApiOhlcBar[];
@@ -77,6 +77,11 @@ export function CandlestickChart({
    *  ChartMountOptions.onPollVolume's own docs. Omit for symbols that don't
    *  need it (equities already get live volume from Kite). */
   onPollVolume?: (bucketStartSec: number) => Promise<number | null>;
+  /** Real ECN ticks for Volume Footprint/TPO -- see
+   *  ChartMountOptions.onFetchTicks's own docs. Omit for symbols without
+   *  tick coverage; those two chart types just render candles with no
+   *  overlay instead of crashing or showing a blank pane. */
+  onFetchTicks?: (sinceSec: number, untilSec: number) => Promise<{ t: number; p: number }[] | null>;
   /** Older bars than the oldest currently on the chart, for when the user
    *  scrolls/pans back past what's loaded. Returning fewer bars than asked
    *  for (including none) is read as "nothing further back exists".
@@ -112,6 +117,8 @@ export function CandlestickChart({
   useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
   const onPollVolumeRef = useRef(onPollVolume);
   useEffect(() => { onPollVolumeRef.current = onPollVolume; }, [onPollVolume]);
+  const onFetchTicksRef = useRef(onFetchTicks);
+  useEffect(() => { onFetchTicksRef.current = onFetchTicks; }, [onFetchTicks]);
   const chartTypeRef = useRef(chartType);
   useEffect(() => { chartTypeRef.current = chartType; }, [chartType]);
 
@@ -140,6 +147,12 @@ export function CandlestickChart({
       // chartTypeRef above), not the raw prop, so this effect's own
       // dependency array doesn't need onPollVolume in it.
       onPollVolume: onPollVolumeRef.current ? (ts) => onPollVolumeRef.current?.(ts) ?? Promise.resolve(null) : undefined,
+      // Only Volume Footprint/TPO ever call this (see their own renderer
+      // files) -- a plain always-present wrapper is fine here, unlike
+      // onPollVolume above: nothing starts a background timer off its mere
+      // presence, so there's no "wasted for every chart" concern to guard
+      // against the way there was there.
+      onFetchTicks: (since, until) => onFetchTicksRef.current?.(since, until) ?? Promise.resolve(null),
     }).then(() => {
       if (cancelled) { adapter.dispose(); return; }
       adapterRef.current = adapter;

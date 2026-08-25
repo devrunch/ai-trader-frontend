@@ -78,4 +78,70 @@ export const CHART_TYPE_ICONS: Partial<Record<ChartTypeId, ReactNode>> = {
       <rect x="15" y="11" width="3" height="10" /><rect x="21" y="4" width="3" height="17" />
     </svg>
   ),
+  "high-low": (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="6" y1="5" x2="6" y2="19" /><line x1="12" y1="2" x2="12" y2="14" /><line x1="18" y1="8" x2="18" y2="21" />
+    </svg>
+  ),
+  "hlc-area": (
+    <svg width="16" height="16" viewBox="0 0 24 24">
+      <path d="M3 8 9 5 13 9 21 3 21 19 13 15 9 18 3 14Z" fill="currentColor" opacity="0.28" />
+      <polyline points="3 11 9 9 13 12 21 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  ),
+  "volume-footprint": (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="10" y="3" width="3" height="4" opacity="0.9" /><rect x="13" y="3" width="5" height="4" opacity="0.45" />
+      <rect x="8" y="8" width="5" height="4" opacity="0.9" /><rect x="13" y="8" width="3" height="4" opacity="0.45" />
+      <rect x="9" y="13" width="4" height="4" opacity="0.9" /><rect x="13" y="13" width="6" height="4" opacity="0.45" />
+      <rect x="7" y="18" width="6" height="3" opacity="0.9" /><rect x="13" y="18" width="3" height="3" opacity="0.45" />
+    </svg>
+  ),
+  tpo: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="14" y="3" width="8" height="2.5" /><rect x="10" y="7" width="12" height="2.5" />
+      <rect x="6" y="11" width="16" height="2.5" /><rect x="12" y="15" width="10" height="2.5" />
+      <rect x="16" y="19" width="6" height="2.5" />
+    </svg>
+  ),
+  "session-volume-profile": (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <line x1="6" y1="4" x2="6" y2="18" /><rect x="4" y="8" width="4" height="6" fill="currentColor" stroke="none" />
+      <line x1="12" y1="2" x2="12" y2="16" /><rect x="10" y="6" width="4" height="6" fill="currentColor" stroke="none" />
+      <g fill="currentColor" stroke="none">
+        <rect x="17" y="5" width="6" height="2" /><rect x="17" y="9" width="3" height="2" /><rect x="17" y="13" width="4.5" height="2" />
+      </g>
+    </svg>
+  ),
+  renko: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="3" y="16" width="5" height="5" /><rect x="9" y="10" width="5" height="6" opacity="0.5" />
+      <rect x="15" y="4" width="5" height="6" />
+    </svg>
+  ),
+  "line-break": (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="3" y="14" width="4" height="6" /><rect x="9" y="6" width="4" height="8" />
+      <rect x="15" y="10" width="4" height="4" opacity="0.5" />
+    </svg>
+  ),
+  kagi: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+      <polyline points="3 18 8 6 13 15 21 4" />
+    </svg>
+  ),
+  "point-figure": (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <line x1="4" y1="14" x2="8" y2="18" /><line x1="8" y1="14" x2="4" y2="18" />
+      <line x1="4" y1="8" x2="8" y2="12" /><line x1="8" y1="8" x2="4" y2="12" />
+      <circle cx="16" cy="16" r="3" /><circle cx="16" cy="9" r="3" />
+    </svg>
+  ),
+  range: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="3.5" y="6" width="4" height="14" fill="currentColor" stroke="none" /><line x1="5.5" y1="6" x2="5.5" y2="20" />
+      <rect x="10.5" y="3" width="4" height="17" fill="currentColor" stroke="none" /><line x1="12.5" y1="3" x2="12.5" y2="20" />
+      <rect x="17.5" y="9" width="4" height="11" fill="currentColor" stroke="none" /><line x1="19.5" y1="9" x2="19.5" y2="20" />
+    </svg>
+  ),
 };

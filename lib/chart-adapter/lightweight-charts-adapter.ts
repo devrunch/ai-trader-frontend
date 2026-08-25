@@ -120,6 +120,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
   private loadingMore = false;
   private onPollVolumeFn?: (bucketStartSec: number) => Promise<number | null>;
   private volumePollTimer: ReturnType<typeof setInterval> | null = null;
+  private onFetchTicksFn?: (sinceSec: number, untilSec: number) => Promise<{ t: number; p: number }[] | null>;
   private drawings = new Map<string, DrawingEntry[]>();
   private volumeProfileHandles = new Map<string, VolumeProfileHandle>();
   private containerEl: HTMLElement | null = null;
@@ -177,6 +178,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
   async mount(el: HTMLElement, options: ChartMountOptions): Promise<void> {
     this.bars = options.bars;
     this.onLoadMoreFn = options.onLoadMore;
+    this.onFetchTicksFn = options.onFetchTicks;
     this.containerEl = el;
     const chart = createChart(el, {
       layout: { background: { color: "#0b0e14" }, textColor: "#8b8a9e", attributionLogo: false },
@@ -186,7 +188,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
     this.chart = chart;
 
     this.chartType = options.chartType ?? "candles";
-    this.renderer = rendererFor(this.chartType)(chart, options.bars);
+    this.renderer = rendererFor(this.chartType)(chart, options.bars, { fetchTicks: this.onFetchTicksFn });
     this.mainSeries = this.renderer.series;
 
     this.volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "volume" });
@@ -246,7 +248,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
 
     if (oldSeries) this.chart.removeSeries(oldSeries);
     this.chartType = id;
-    this.renderer = rendererFor(id)(this.chart, this.bars);
+    this.renderer = rendererFor(id)(this.chart, this.bars, { fetchTicks: this.onFetchTicksFn });
     this.mainSeries = this.renderer.series;
 
     for (const list of this.drawings.values()) {

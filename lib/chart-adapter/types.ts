@@ -32,6 +32,13 @@ export interface ChartMountOptions {
    *  zeroing it; omit entirely to disable polling (equities don't need it,
    *  Kite's own volume already arrives live). */
   onPollVolume?: (bucketStartSec: number) => Promise<number | null>;
+  /** Real ECN ticks (mid price) for [sinceSec, untilSec) -- only Volume
+   *  Footprint/TPO use this (see ChartRendererContext.fetchTicks, which is
+   *  where the adapter forwards it to whichever renderer is mounted); every
+   *  other chart type ignores it. FOREX/metals only via Dukascopy; omit to
+   *  leave those two types unable to fetch anything (they degrade to a
+   *  visible "no tick data" state rather than a blank chart). */
+  onFetchTicks?: (sinceSec: number, untilSec: number) => Promise<{ t: number; p: number }[] | null>;
 }
 
 export interface PriceLevels {

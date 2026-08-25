@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { LightweightChartsAdapter } from "./lightweight-charts-adapter";
 import { runPineIndicator } from "@/lib/api/pine";
 import { CHART_TYPES } from "./chart-types/registry";
+import type { ChartTypeId } from "./chart-types/types";
 
 // Real shape: {time (ms), value} points, not raw numbers -- matches what
 // the actual sandbox returns (see app/pine_sandbox/worker.mjs).
@@ -605,11 +606,12 @@ describe("LightweightChartsAdapter", () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
     const adapter = new LightweightChartsAdapter();
-    // "tpo" is a real ChartTypeId (see chart-types/types.ts's full target-list
-    // union) but has no entry in the registry yet -- rendererFor's own
-    // fallback is what's under test here, not a type error.
-    await adapter.mount(el, { bars: [{ time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }], chartType: "tpo" });
-    expect(adapter.getChartType()).toBe("tpo"); // the adapter still records what was asked for...
+    // Every real ChartTypeId has a registry entry now -- this exercises
+    // rendererFor's own fallback for a saved layout naming an id this
+    // build doesn't recognize (an older or future app version).
+    const unknownType = "not-a-real-type" as ChartTypeId;
+    await adapter.mount(el, { bars: [{ time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }], chartType: unknownType });
+    expect(adapter.getChartType()).toBe(unknownType); // the adapter still records what was asked for...
     expect(adapter.seriesCount()).toBe(2); // ...but rendererFor silently gave it a working candles series, not a blank pane
     adapter.dispose();
   });

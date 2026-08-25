@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ChartTypePicker } from "./ChartTypePicker";
+import type { ChartTypeId } from "@/lib/chart-adapter/types";
 
 describe("ChartTypePicker", () => {
   it("is an icon-only trigger naming the current type in its title, closed by default", () => {
@@ -29,11 +30,13 @@ describe("ChartTypePicker", () => {
   });
 
   it("falls back to the raw id when the current value has no registered icon or label", () => {
-    // "tpo" is a real ChartTypeId with no built renderer yet (see
-    // chart-types/registry.ts) -- the trigger must not crash or show blank.
-    render(<ChartTypePicker value="tpo" onChange={vi.fn()} />);
+    // Every real ChartTypeId is registered now -- this exercises the
+    // defensive fallback for a saved layout's chartType from an older or
+    // future app build that names an id this one doesn't recognize. The
+    // trigger must not crash or show blank.
+    render(<ChartTypePicker value={"not-a-real-type" as ChartTypeId} onChange={vi.fn()} />);
     const trigger = screen.getByLabelText("Change chart type");
-    expect(trigger).toHaveAttribute("title", "Chart type: tpo");
-    expect(screen.getByText("tpo")).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("title", "Chart type: not-a-real-type");
+    expect(screen.getByText("not-a-real-type")).toBeInTheDocument();
   });
 });

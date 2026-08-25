@@ -54,6 +54,7 @@ export interface DesktopTerminalLayoutProps {
    *  CandlestickChart's own onPollVolume doc for why presence, not just
    *  behavior, matters here. */
   onPollVolume?: (bucketStartSec: number) => Promise<number | null>;
+  onFetchTicks?: (sinceSec: number, untilSec: number) => Promise<{ t: number; p: number }[] | null>;
 
   chartRef: RefObject<ChartAdapter | null>;
   setChartReady: Dispatch<SetStateAction<number>>;
@@ -154,7 +155,7 @@ export interface DesktopTerminalLayoutProps {
 export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
   const {
     activeSymbol, activeExchange, quote, connected, ltp, change, changePct, isUp, bid, ask, spread,
-    bars, barsLoading, barsError, setBarsReload, handleLoadMore, onPollVolume,
+    bars, barsLoading, barsError, setBarsReload, handleLoadMore, onPollVolume, onFetchTicks,
     chartRef, setChartReady, activeTool, pickTool, clearMyDrawings, resetChart, layout,
     indicators, setIndicators, indicatorPickerOpen, setIndicatorPickerOpen, pickerEntries, setApiIndicators,
     editorOpen, setEditorOpen, editingIndicator, setEditingIndicator, reattachIfLive,
@@ -402,6 +403,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
               onLoadMore={handleLoadMore}
               onPollVolume={onPollVolume}
+              onFetchTicks={onFetchTicks}
               legendItems={legendItems}
               onToggleVisible={handleToggleIndicatorVisible}
               onDelete={handleDeleteIndicator}

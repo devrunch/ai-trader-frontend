@@ -111,6 +111,25 @@ export const getTickVolume = (symbol: string, sinceEpochSec: number) =>
     `/api/market/tick-volume/${symbol}?since=${sinceEpochSec}`
   );
 
+export interface ApiTick {
+  /** Unix milliseconds -- Dukascopy's own tick resolution, finer than this
+   *  app's whole-second convention everywhere else. */
+  t: number;
+  /** Mid of Dukascopy's own bid/ask pair -- a tick here is a quote update,
+   *  not a single-sided trade print. */
+  p: number;
+}
+
+/** Real ECN ticks (mid price) for Volume Footprint/TPO, FOREX/metals only,
+ *  bounded to a max 4h window (see the signals-side get_ticks' own
+ *  MAX_TICKS_WINDOW_SECONDS). `ticks: null` means this symbol isn't
+ *  Dukascopy-covered, the window was rejected, or the vendor call failed --
+ *  never render that as "no trading happened," only as "couldn't check." */
+export const getTicks = (symbol: string, sinceEpochSec: number, untilEpochSec: number) =>
+  req<{ ticks: ApiTick[] | null }>(
+    `/api/market/ticks/${symbol}?since=${sinceEpochSec}&until=${untilEpochSec}`
+  );
+
 export interface SymbolMatch {
   symbol: string;
   name: string;

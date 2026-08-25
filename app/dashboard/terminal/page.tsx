@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from "re
 import {
   getHistorical,
   getTickVolume,
+  getTicks,
   getQuote,
   getSignalsBySymbol,
   generateSignal,
@@ -645,6 +646,15 @@ export default function TerminalPage() {
     return getTickVolume(activeSymbol, bucketStartSec).then((r) => r.count).catch(() => null);
   }, [activeSymbol]);
 
+  /* Volume Footprint/TPO's own data source -- real ECN ticks, FOREX/metals
+     only, same reasoning as handlePollVolume above. Only wired in for
+     activeExchange === "FOREX" (see the JSX below); those two chart types
+     already degrade to plain candles with no overlay when this resolves
+     null (a non-FOREX symbol, or the vendor call failing). */
+  const handleFetchTicks = useCallback((sinceSec: number, untilSec: number): Promise<{ t: number; p: number }[] | null> => {
+    return getTicks(activeSymbol, sinceSec, untilSec).then((r) => r.ticks).catch(() => null);
+  }, [activeSymbol]);
+
   /* Existing stored signal (background, doesn't force a fresh LLM call) */
   useEffect(() => {
     getSignalsBySymbol(activeSymbol)
@@ -805,6 +815,7 @@ export default function TerminalPage() {
     // The prop's mere presence is what starts the adapter's poll timer, so
     // it must genuinely be undefined here, not a function that just no-ops.
     onPollVolume: activeExchange === "FOREX" ? handlePollVolume : undefined,
+    onFetchTicks: activeExchange === "FOREX" ? handleFetchTicks : undefined,
     chartRef, setChartReady, activeTool, pickTool, clearMyDrawings, resetChart, layout,
     indicators, setIndicators, indicatorPickerOpen, setIndicatorPickerOpen, pickerEntries, setApiIndicators,
     editorOpen, setEditorOpen, editingIndicator, setEditingIndicator, reattachIfLive,
