@@ -22,6 +22,27 @@ export const CHART_TYPE_ICONS: Partial<Record<ChartTypeId, ReactNode>> = {
       <line x1="20" y1="7" x2="20" y2="22" /><line x1="18" y1="10" x2="20" y2="10" /><line x1="20" y1="17" x2="22" y2="17" />
     </svg>
   ),
+  "hollow-candles": (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <line x1="6" y1="3" x2="6" y2="21" /><rect x="4" y="8" width="4" height="7" />
+      <line x1="14" y1="2" x2="14" y2="10" /><rect x="12" y="10" width="4" height="6" fill="currentColor" stroke="none" />
+      <line x1="20" y1="6" x2="20" y2="20" /><rect x="18" y="12" width="4" height="5" />
+    </svg>
+  ),
+  "volume-candles": (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <line x1="6" y1="5" x2="6" y2="19" /><rect x="4.5" y="9" width="3" height="6" fill="currentColor" stroke="none" opacity="0.35" />
+      <line x1="14" y1="2" x2="14" y2="10" /><rect x="12" y="10" width="4" height="6" fill="currentColor" stroke="none" opacity="0.7" />
+      <line x1="20" y1="6" x2="20" y2="20" /><rect x="17.5" y="11" width="5" height="7" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  "heikin-ashi": (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <line x1="6" y1="6" x2="6" y2="18" /><rect x="4" y="9" width="4" height="6" fill="currentColor" stroke="none" />
+      <line x1="14" y1="4" x2="14" y2="16" /><rect x="12" y="8" width="4" height="6" fill="currentColor" stroke="none" />
+      <line x1="20" y1="7" x2="20" y2="19" /><rect x="18" y="10" width="4" height="6" fill="currentColor" stroke="none" />
+    </svg>
+  ),
   line: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
       <polyline points="3 17 9 10 13 14 21 5" />

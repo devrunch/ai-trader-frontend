@@ -7,10 +7,19 @@ import type { ApiOhlcBar } from "@/lib/api";
  *  registry.ts); this union is the full target list so a not-yet-built
  *  type is still a compile error if referenced, not a silent typo. */
 export type ChartTypeId =
-  | "candles" | "bars" | "hollow-candles" | "volume-candles"
+  | "candles" | "bars" | "hollow-candles" | "volume-candles" | "heikin-ashi"
   | "line" | "line-markers" | "step-line" | "area" | "hlc-area"
   | "baseline" | "columns" | "high-low"
-  | "volume-footprint" | "tpo" | "session-volume-profile";
+  | "volume-footprint" | "tpo" | "session-volume-profile"
+  // Non-time-indexed types -- TradingView draws these on a synthetic axis
+  // (bricks/columns driven by price movement, not one per time bar), which
+  // this app's whole bar model (ApiOhlcBar, one entry per candle period,
+  // pushLiveTick/loadMore keyed by time) doesn't represent at all. Listed
+  // here so referencing one is a compile error, not a silent typo, but
+  // building them for real means a second, non-time axis mode alongside
+  // this one -- out of scope for the renderer-registry pattern every other
+  // type here uses.
+  | "renko" | "line-break" | "kagi" | "point-figure" | "range";
 
 /** One chart type, live on a mounted chart. `series` is the anchor every
  *  other adapter feature (price lines, drawing primitives, the crosshair
