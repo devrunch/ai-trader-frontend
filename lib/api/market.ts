@@ -48,6 +48,17 @@ export function marketPhase(m: ApiMarketStatus | null): MarketPhase | null {
 /** Prices come from a free, unofficial feed. Say so wherever one is shown. */
 export const PRICE_DELAY_NOTE = "Delayed ~15 min";
 
+/** Real, per-headline stock/instrument impact from the signals-side LLM
+ *  analysis (app/market/news.py's own _analyze_impacts) -- not a keyword
+ *  match against a fixed ticker list. `direction` is the analysis' own
+ *  call on which way this headline plausibly moves that symbol; `reason`
+ *  is grounded in the headline text, never invented. */
+export interface ApiNewsImpact {
+  symbol: string;
+  direction: "up" | "down";
+  reason: string;
+}
+
 export interface ApiNewsItem {
   id: string;
   headline: string;
@@ -57,7 +68,13 @@ export interface ApiNewsItem {
   publishedAt: string;
   sentiment: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
   sentimentScore: number;
-  symbols: string[];
+  /** False means the sentiment above is "we could not score it" (always
+   *  NEUTRAL/0 in that case), not "FinBERT read it as neutral". */
+  sentimentAvailable: boolean;
+  /** Real per-symbol impact, or null when the whole batch couldn't be
+   *  analyzed (no LLM configured, the call failed) -- never collapse that
+   *  into an empty array, which means "analyzed, no real impact found". */
+  impacts: ApiNewsImpact[] | null;
 }
 
 export interface ApiOhlcBar {

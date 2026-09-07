@@ -60,7 +60,7 @@ function timeAgo(iso: string) {
 type Tab = "Signals" | "Performance" | "News";
 type ActionFilter = "All" | "BUY" | "SELL";
 type ConfFilter = "All" | "High" | "Medium";
-type NewsFilter = "All" | "POSITIVE" | "NEGATIVE" | "NEUTRAL";
+type NewsFilter = "All" | "POSITIVE" | "NEGATIVE" | "NEUTRAL" | "HAS_IMPACT";
 
 export default function SignalsPage() {
   const [tab, setTab] = useState<Tab>("Signals");
@@ -147,7 +147,9 @@ export default function SignalsPage() {
     return true;
   });
 
-  const filteredNews = newsFilter === "All" ? news : news.filter(n => n.sentiment === newsFilter);
+  const filteredNews = newsFilter === "All" ? news
+    : newsFilter === "HAS_IMPACT" ? news.filter(n => (n.impacts?.length ?? 0) > 0)
+    : news.filter(n => n.sentiment === newsFilter);
 
   return (
     <div className="h-full overflow-y-auto no-scrollbar py-5">
@@ -484,7 +486,7 @@ export default function SignalsPage() {
         {tab === "News" && (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              {(["All", "POSITIVE", "NEGATIVE", "NEUTRAL"] as NewsFilter[]).map(f => (
+              {(["All", "HAS_IMPACT", "POSITIVE", "NEGATIVE", "NEUTRAL"] as NewsFilter[]).map(f => (
                 <button key={f} onClick={() => setNewsFilter(f)}
                   className="px-3 py-1.5 text-xs font-medium border transition-colors"
                   style={newsFilter === f
@@ -493,7 +495,7 @@ export default function SignalsPage() {
                       : f === "NEUTRAL" ? { background: "var(--muted-foreground)", color: "var(--background)", borderColor: "var(--muted-foreground)" }
                       : { background: "var(--foreground)", color: "var(--background)", borderColor: "var(--foreground)" })
                     : { borderColor: "var(--border)", color: "var(--muted-foreground)" }}>
-                  {f === "All" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
+                  {f === "All" ? "All" : f === "HAS_IMPACT" ? "Has stock impact" : f.charAt(0) + f.slice(1).toLowerCase()}
                 </button>
               ))}
             </div>
@@ -518,12 +520,31 @@ export default function SignalsPage() {
                         <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ background: col, color: "#0b0e14" }}>{n.sentiment}</span>
                       </div>
                       {n.description && <p className="text-xs text-muted-foreground leading-relaxed mb-2 line-clamp-2">{n.description}</p>}
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono mb-1">
                         <span>{n.source}</span><span>·</span><span>{timeAgo(n.publishedAt)}</span>
-                        {n.symbols?.slice(0, 3).map(s => (
-                          <span key={s} className="px-1.5 py-0.5 bg-secondary">{s}</span>
-                        ))}
                       </div>
+                      {/* Real per-stock impact, not a keyword-matched ticker
+                          chip -- see app/market/news.py's own _analyze_impacts.
+                          Silent when the analysis genuinely found nothing (most
+                          headlines don't move a tradeable instrument, and
+                          saying so on every row would be noise); an explicit
+                          note only when the analysis itself couldn't run at
+                          all, since that's the one case worth flagging. */}
+                      {n.impacts === null ? (
+                        <p className="text-[10px] text-muted-foreground/70 italic">Stock-impact analysis unavailable for this headline</p>
+                      ) : n.impacts.length > 0 ? (
+                        <div className="flex flex-col gap-1 mt-1.5">
+                          {n.impacts.map((imp, idx) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-bold"
+                                style={{ background: imp.direction === "up" ? "var(--buy)" : "var(--sell)", color: "#0b0e14" }}>
+                                {imp.symbol} {imp.direction === "up" ? "↑" : "↓"}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground leading-snug">{imp.reason}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </a>
                   );
                 })}
