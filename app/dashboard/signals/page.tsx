@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { indicatorLabel, indicatorValue } from "@/lib/indicator-labels";
 import { errorMessage, getSignals, getMarketNews, getSignalPerformance, MIN_BUCKET_SAMPLE,
-  type ApiSignal, type ApiNewsItem, type SignalPerformance } from "@/lib/api";
+  type ApiSignal, type ApiNewsItem, type SignalPerformance, type NewsAssetClass } from "@/lib/api";
 import { useMarketStatus } from "@/lib/market-status";
 import { Disclaimer } from "@/components/Disclaimer";
 import { ErrorState } from "@/components/ErrorState";
@@ -61,6 +61,12 @@ type Tab = "Signals" | "Performance" | "News";
 type ActionFilter = "All" | "BUY" | "SELL";
 type ConfFilter = "All" | "High" | "Medium";
 type NewsFilter = "All" | "POSITIVE" | "NEGATIVE" | "NEUTRAL" | "HAS_IMPACT";
+type AssetClassFilter = "All" | NewsAssetClass;
+/** Fixed order, not derived from whatever happens to be in today's news --
+ *  this app's own real exchange set (see market.controller.ts's EXCHANGES)
+ *  plus CRYPTO/OTHER, so the filter row's shape doesn't jump around as
+ *  headlines come and go. */
+const ASSET_CLASSES: NewsAssetClass[] = ["NSE", "BSE", "NASDAQ", "NYSE", "FOREX", "MCX", "CRYPTO", "OTHER"];
 
 export default function SignalsPage() {
   const [tab, setTab] = useState<Tab>("Signals");
@@ -73,6 +79,7 @@ export default function SignalsPage() {
 
   const [news, setNews] = useState<ApiNewsItem[]>([]);
   const [newsFilter, setNewsFilter] = useState<NewsFilter>("All");
+  const [assetClassFilter, setAssetClassFilter] = useState<AssetClassFilter>("All");
   const [loadedNews, setLoadedNews] = useState(false);
 
   const [perf, setPerf] = useState<SignalPerformance | null>(null);
@@ -147,9 +154,20 @@ export default function SignalsPage() {
     return true;
   });
 
-  const filteredNews = newsFilter === "All" ? news
+  const newsBySentiment = newsFilter === "All" ? news
     : newsFilter === "HAS_IMPACT" ? news.filter(n => (n.impacts?.length ?? 0) > 0)
     : news.filter(n => n.sentiment === newsFilter);
+
+  /* Per-article, not per-impact -- an article with two NSE-tagged impacts
+     should count once toward "how many headlines touch NSE today", not two. */
+  const assetClassCounts: Partial<Record<NewsAssetClass, number>> = {};
+  for (const n of newsBySentiment) {
+    const classesHere = new Set((n.impacts ?? []).map(imp => imp.assetClass));
+    for (const cls of classesHere) assetClassCounts[cls] = (assetClassCounts[cls] ?? 0) + 1;
+  }
+
+  const filteredNews = assetClassFilter === "All" ? newsBySentiment
+    : newsBySentiment.filter(n => n.impacts?.some(imp => imp.assetClass === assetClassFilter));
 
   return (
     <div className="h-full overflow-y-auto no-scrollbar py-5">
@@ -500,6 +518,32 @@ export default function SignalsPage() {
               ))}
             </div>
 
+            {/* Divides today's impacts by market/asset class -- NSE, BSE,
+                NASDAQ, NYSE, FOREX, MCX, plus CRYPTO (informational; this
+                app has no crypto trading integration) and OTHER, the honest
+                fallback the signals-side analysis uses when nothing real
+                fits. A count of 0 still shows the chip; it just does
+                nothing useful to click. */}
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={() => setAssetClassFilter("All")}
+                className="px-2.5 py-1 text-[10px] font-mono font-medium border transition-colors"
+                style={assetClassFilter === "All"
+                  ? { background: "var(--foreground)", color: "var(--background)", borderColor: "var(--foreground)" }
+                  : { borderColor: "var(--border)", color: "var(--muted-foreground)" }}>
+                All markets
+              </button>
+              {ASSET_CLASSES.map(cls => (
+                <button key={cls} onClick={() => setAssetClassFilter(cls)}
+                  disabled={!assetClassCounts[cls]}
+                  className="px-2.5 py-1 text-[10px] font-mono font-medium border transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={assetClassFilter === cls
+                    ? { background: "var(--foreground)", color: "var(--background)", borderColor: "var(--foreground)" }
+                    : { borderColor: "var(--border)", color: "var(--muted-foreground)" }}>
+                  {cls} <span className="opacity-60">{assetClassCounts[cls] ?? 0}</span>
+                </button>
+              ))}
+            </div>
+
             {newsLoading ? (
               <div className="p-10 text-center text-muted-foreground text-sm">Loading news…</div>
             ) : newsError ? (
@@ -536,6 +580,9 @@ export default function SignalsPage() {
                         <div className="flex flex-col gap-1 mt-1.5">
                           {n.impacts.map((imp, idx) => (
                             <div key={idx} className="flex items-start gap-2">
+                              <span className="shrink-0 px-1 py-0.5 text-[9px] font-mono text-muted-foreground border border-border">
+                                {imp.assetClass}
+                              </span>
                               <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-bold"
                                 style={{ background: imp.direction === "up" ? "var(--buy)" : "var(--sell)", color: "#0b0e14" }}>
                                 {imp.symbol} {imp.direction === "up" ? "↑" : "↓"}

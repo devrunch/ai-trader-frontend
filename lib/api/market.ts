@@ -53,10 +53,17 @@ export const PRICE_DELAY_NOTE = "Delayed ~15 min";
  *  match against a fixed ticker list. `direction` is the analysis' own
  *  call on which way this headline plausibly moves that symbol; `reason`
  *  is grounded in the headline text, never invented. */
+/** This app's own real exchange set (market.controller.ts's EXCHANGES) plus
+ *  CRYPTO (informational only -- no crypto trading/price integration exists
+ *  anywhere in this app) and OTHER, the signals-side honest fallback for
+ *  anything that doesn't fit rather than a forced wrong guess. */
+export type NewsAssetClass = "NSE" | "BSE" | "NASDAQ" | "NYSE" | "FOREX" | "MCX" | "CRYPTO" | "OTHER";
+
 export interface ApiNewsImpact {
   symbol: string;
   direction: "up" | "down";
   reason: string;
+  assetClass: NewsAssetClass;
 }
 
 export interface ApiNewsItem {
