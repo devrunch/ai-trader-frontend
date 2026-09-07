@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { MarketStatusProvider, useMarketStatus, nextOpenLabel } from "@/lib/market-status";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { API_BASE_URL } from "@/lib/api/client";
+import { AlertsBell } from "@/components/AlertsBell";
 
 const TABS = [
   // Was "Brief" -- the old macro-cues-plus-candidates page rarely had
@@ -214,6 +215,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
         <div className="flex-1" />
 
         <MarketPulse />
+        <AlertsBell />
 
         {/* Avatar menu */}
         <div className="relative" ref={menuRef}>

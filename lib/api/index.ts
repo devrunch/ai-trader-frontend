@@ -13,6 +13,7 @@
 export * from "./client";
 export * from "./signals";
 export * from "./brief";
+export * from "./alerts";
 export * from "./chat";
 export * from "./charts";
 // `paper` describes the account and reads it; `paper-actions` changes it.
