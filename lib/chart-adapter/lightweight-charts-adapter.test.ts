@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
-import { LightweightChartsAdapter } from "./lightweight-charts-adapter";
+import { LightweightChartsAdapter, findBarByTime } from "./lightweight-charts-adapter";
 import { runPineIndicator } from "@/lib/api/pine";
 import { CHART_TYPES } from "./chart-types/registry";
 import type { ChartTypeId } from "./chart-types/types";
@@ -18,6 +18,35 @@ vi.mock("@/lib/api/pine", () => ({
     error: null,
   }),
 }));
+
+describe("findBarByTime", () => {
+  const bars = [
+    { time: 1000, open: 1, high: 2, low: 0, close: 1, volume: 0 },
+    { time: 1060, open: 2, high: 3, low: 1, close: 2, volume: 0 },
+    { time: 1120, open: 3, high: 4, low: 2, close: 3, volume: 0 },
+  ];
+
+  it("returns the exact bar on an exact time match -- every normal chart type's own case", () => {
+    expect(findBarByTime(bars, 1060)).toBe(bars[1]);
+  });
+
+  it("floors to the nearest bar AT OR BEFORE a time that isn't an exact match -- the brick-family case (strictlyIncreasingTime nudges a brick's real bar time forward by whole seconds)", () => {
+    expect(findBarByTime(bars, 1061)).toBe(bars[1]); // 1 second after bar 1's real time -- one nudge
+    expect(findBarByTime(bars, 1065)).toBe(bars[1]); // several nudges, still well short of bar 2 (1120)
+  });
+
+  it("a time before every bar returns undefined, not the first bar", () => {
+    expect(findBarByTime(bars, 999)).toBeUndefined();
+  });
+
+  it("a time after every bar floors to the last one", () => {
+    expect(findBarByTime(bars, 5000)).toBe(bars[2]);
+  });
+
+  it("an empty bars array never throws", () => {
+    expect(findBarByTime([], 1000)).toBeUndefined();
+  });
+});
 
 describe("LightweightChartsAdapter", () => {
   it("mounts with only candle + volume series, no indicator pre-attached", async () => {

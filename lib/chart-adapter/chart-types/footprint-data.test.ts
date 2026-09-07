@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { bucketTicksByBar, clampFetchWindow, MAX_FETCH_WINDOW_SECONDS } from "./footprint-data";
+import { describe, it, expect, vi } from "vitest";
+import { bucketTicksByBar, clampFetchWindow, createTickFetchLifecycle, MAX_FETCH_WINDOW_SECONDS } from "./footprint-data";
 import type { ApiOhlcBar } from "@/lib/api";
+import type { SeriesAttachedParameter, Time } from "lightweight-charts";
 
 const bar = (time: number, open: number, high: number, low: number, close: number): ApiOhlcBar =>
   ({ time, open, high, low, close, volume: 0 });
@@ -45,6 +46,125 @@ describe("bucketTicksByBar", () => {
   it("no bars or no ticks both produce an empty map, not a throw", () => {
     expect(bucketTicksByBar([], [{ t: 1000, p: 1 }]).size).toBe(0);
     expect(bucketTicksByBar([bar(1000, 100, 110, 90, 105)], []).size).toBe(0);
+  });
+
+  it("ticks arriving out of order are sorted before bucketing, not trusted as-is", () => {
+    // Same fixture as the first test above, but shuffled -- the backend
+    // contract never actually guarantees ascending order, and both the
+    // buy/sell classification (compares each tick to the one immediately
+    // before it) and the forward-only bar-lookup pointer assume it.
+    const bars = [bar(1000, 100, 110, 90, 105), bar(1060, 105, 115, 95, 108)];
+    const shuffled = [
+      { t: 1070_000, p: 104 },
+      { t: 1000_000, p: 100 },
+      { t: 1065_000, p: 106 },
+      { t: 1020_000, p: 98 },
+      { t: 1010_000, p: 102 },
+    ];
+    const result = bucketTicksByBar(bars, shuffled);
+    // Same expected result as the in-order test -- sorting internally
+    // must make the outcome independent of input order.
+    expect(result.get(1000)!.levels.get(5)).toEqual({ buy: 1, sell: 0 });
+    expect(result.get(1000)!.levels.get(6)).toEqual({ buy: 1, sell: 0 });
+    expect(result.get(1000)!.levels.get(4)).toEqual({ buy: 0, sell: 1 });
+    expect(result.get(1060)!.levels.get(5)).toEqual({ buy: 1, sell: 0 });
+    expect(result.get(1060)!.levels.get(4)).toEqual({ buy: 0, sell: 1 });
+  });
+});
+
+/** A minimal `SeriesAttachedParameter`-shaped stub -- just enough surface
+ *  for createTickFetchLifecycle's own calls (chart.timeScale()'s three
+ *  methods, requestUpdate). Real primitive tests elsewhere in this codebase
+ *  mount a real LWC chart; this one doesn't need to, since nothing here
+ *  touches drawing or coordinate conversion. */
+function fakeAttachedParam() {
+  const handlers: (() => void)[] = [];
+  let visibleRange: { from: number; to: number } | null = { from: 1000, to: 2000 };
+  return {
+    param: {
+      chart: {
+        timeScale: () => ({
+          getVisibleRange: () => visibleRange,
+          subscribeVisibleTimeRangeChange: (h: () => void) => handlers.push(h),
+          unsubscribeVisibleTimeRangeChange: (h: () => void) => {
+            const i = handlers.indexOf(h);
+            if (i >= 0) handlers.splice(i, 1);
+          },
+        }),
+      },
+      requestUpdate: vi.fn(),
+    } as unknown as SeriesAttachedParameter<Time> & { requestUpdate: ReturnType<typeof vi.fn> },
+    fireVisibleRangeChange: () => handlers.forEach((h) => h()),
+    setVisibleRange: (r: { from: number; to: number } | null) => { visibleRange = r; },
+    subscriberCount: () => handlers.length,
+  };
+}
+
+describe("createTickFetchLifecycle", () => {
+  it("fetches immediately on attach, and stops on detach", async () => {
+    const fetchTicks = vi.fn().mockResolvedValue([{ t: 1000, p: 1 }]);
+    const onTicks = vi.fn();
+    const lifecycle = createTickFetchLifecycle(fetchTicks, onTicks);
+    const { param } = fakeAttachedParam();
+
+    lifecycle.attached(param);
+    await Promise.resolve(); await Promise.resolve();
+
+    expect(fetchTicks).toHaveBeenCalledTimes(1);
+    expect(onTicks).toHaveBeenCalledWith([{ t: 1000, p: 1 }]);
+    expect(param.requestUpdate).toHaveBeenCalled();
+
+    lifecycle.detached();
+    expect(lifecycle.getAttached()).toBeNull();
+  });
+
+  it("a slower, older fetch that resolves AFTER a newer one does not overwrite the newer result", async () => {
+    // The exact race this fixes: pan left (issues fetch #1, slow) then
+    // quickly pan right (issues fetch #2, fast) -- without request-
+    // sequencing, fetch #1's response landing last would silently clobber
+    // the correct, current result from fetch #2.
+    vi.useFakeTimers();
+    try {
+      let resolveFirst!: (v: { t: number; p: number }[]) => void;
+      let resolveSecond!: (v: { t: number; p: number }[]) => void;
+      const fetchTicks = vi.fn()
+        .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r; }))
+        .mockImplementationOnce(() => new Promise((r) => { resolveSecond = r; }));
+      const onTicks = vi.fn();
+      const lifecycle = createTickFetchLifecycle(fetchTicks, onTicks);
+      const { param, fireVisibleRangeChange } = fakeAttachedParam();
+
+      lifecycle.attached(param); // issues fetch #1 (pending)
+      expect(fetchTicks).toHaveBeenCalledTimes(1);
+
+      fireVisibleRangeChange(); // schedules the debounced refetch
+      await vi.advanceTimersByTimeAsync(500); // FETCH_DEBOUNCE_MS -- issues fetch #2 (pending)
+      expect(fetchTicks).toHaveBeenCalledTimes(2);
+
+      // Resolve the NEWER request (#2) first, exactly like a quick right-pan
+      // answering faster than the abandoned left-pan's slower request.
+      resolveSecond!([{ t: 2000, p: 2 }]);
+      await Promise.resolve(); await Promise.resolve();
+      expect(onTicks).toHaveBeenCalledWith([{ t: 2000, p: 2 }]);
+
+      // Now the OLDER request (#1) finally resolves -- must be discarded,
+      // not applied on top of the newer, already-correct result.
+      resolveFirst!([{ t: 1000, p: 1 }]);
+      await Promise.resolve(); await Promise.resolve();
+
+      expect(onTicks).toHaveBeenCalledTimes(1); // never called a second time with the stale data
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("no ticks fetched when fetchTicks is undefined (symbol without tick coverage)", async () => {
+    const onTicks = vi.fn();
+    const lifecycle = createTickFetchLifecycle(undefined, onTicks);
+    const { param } = fakeAttachedParam();
+    lifecycle.attached(param);
+    await Promise.resolve();
+    expect(onTicks).not.toHaveBeenCalled();
   });
 });
 

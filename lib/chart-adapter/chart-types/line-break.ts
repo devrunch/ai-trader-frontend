@@ -1,7 +1,8 @@
 import { CandlestickSeries } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
-import { type Brick, strictlyIncreasingTime } from "./brick-utils";
+import { type Brick, strictlyIncreasingTime, appendOrReplaceBar } from "./brick-utils";
+import { UP_COLOR, DOWN_COLOR } from "./colors";
 
 /** Standard 3-line break: a new UP block forms only when price closes above
  *  the highest close of the last N blocks; a new DOWN block only when it
@@ -43,8 +44,8 @@ const toPoint = (b: Brick) => ({ time: b.time as never, open: b.open, high: b.hi
 export const createLineBreakRenderer: ChartRendererFactory = (chart, bars) => {
   let liveBars = bars;
   const series = chart.addSeries(CandlestickSeries, {
-    upColor: "#16c784", downColor: "#f0525d", borderVisible: false,
-    wickUpColor: "#16c784", wickDownColor: "#f0525d",
+    upColor: UP_COLOR, downColor: DOWN_COLOR, borderVisible: false,
+    wickUpColor: UP_COLOR, wickDownColor: DOWN_COLOR,
   });
   series.setData(strictlyIncreasingTime(computeLineBreak(bars)).map(toPoint));
 
@@ -55,9 +56,7 @@ export const createLineBreakRenderer: ChartRendererFactory = (chart, bars) => {
       series.setData(strictlyIncreasingTime(computeLineBreak(newBars)).map(toPoint));
     },
     updateBar: (bar) => {
-      liveBars = liveBars.length > 0 && liveBars[liveBars.length - 1].time === bar.time
-        ? [...liveBars.slice(0, -1), bar]
-        : [...liveBars, bar];
+      liveBars = appendOrReplaceBar(liveBars, bar);
       series.setData(strictlyIncreasingTime(computeLineBreak(liveBars)).map(toPoint));
     },
   };

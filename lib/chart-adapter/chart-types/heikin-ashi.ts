@@ -1,6 +1,7 @@
 import { CandlestickSeries } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
+import { UP_COLOR, DOWN_COLOR } from "./colors";
 
 interface HaPoint { time: never; open: number; high: number; low: number; close: number }
 interface HaRef { time: number; haOpen: number; haClose: number }
@@ -31,8 +32,8 @@ function heikinAshiBar(b: ApiOhlcBar, prev: HaRef | null): HaPoint {
  *  itself on every tick and drift further from the correct value each time. */
 export const createHeikinAshiRenderer: ChartRendererFactory = (chart, bars) => {
   const series = chart.addSeries(CandlestickSeries, {
-    upColor: "#16c784", downColor: "#f0525d", borderVisible: false,
-    wickUpColor: "#16c784", wickDownColor: "#f0525d",
+    upColor: UP_COLOR, downColor: DOWN_COLOR, borderVisible: false,
+    wickUpColor: UP_COLOR, wickDownColor: DOWN_COLOR,
   });
 
   let cache: HaRef | null = null;

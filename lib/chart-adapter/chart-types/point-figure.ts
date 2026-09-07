@@ -3,11 +3,10 @@ import type { ISeriesPrimitive, IPrimitivePaneView, Time, SeriesAttachedParamete
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
-import { defaultBoxSize, strictlyIncreasingTime } from "./brick-utils";
+import { defaultBoxSize, strictlyIncreasingTime, appendOrReplaceBar } from "./brick-utils";
+import { UP_COLOR as X_COLOR, DOWN_COLOR as O_COLOR } from "./colors";
 
 const REVERSAL_BOXES = 3; // standard "3-box reversal" convention
-const X_COLOR = "#16c784";
-const O_COLOR = "#f0525d";
 
 interface PnfColumn { time: number; direction: 1 | -1; boxes: number[] }
 
@@ -69,7 +68,7 @@ function fixColumnTimes(columns: PnfColumn[]): PnfColumn[] {
   return columns.map((c, i) => (fixed[i].time === c.time ? c : { ...c, time: fixed[i].time }));
 }
 
-function createPointFigurePrimitive(getColumns: () => PnfColumn[], boxSize: number): ISeriesPrimitive<Time> {
+function createPointFigurePrimitive(getColumns: () => PnfColumn[], getBoxSize: () => number): ISeriesPrimitive<Time> {
   let attached: SeriesAttachedParameter<Time> | null = null;
   return {
     attached(param) { attached = param; param.requestUpdate(); },
@@ -88,6 +87,7 @@ function createPointFigurePrimitive(getColumns: () => PnfColumn[], boxSize: numb
                 ctx.save();
                 ctx.scale(scope.horizontalPixelRatio, scope.verticalPixelRatio);
 
+                const boxSize = getBoxSize();
                 const anchorLevel = columns[columns.length - 1].boxes[0];
                 const y1 = series.priceToCoordinate(anchorLevel);
                 const y2 = series.priceToCoordinate(anchorLevel + boxSize);
@@ -160,7 +160,7 @@ export const createPointFigureRenderer: ChartRendererFactory = (chart, bars) => 
   // never seen (lineVisible: false).
   const anchorPoint = (col: PnfColumn) => ({ time: col.time as never, value: (col.boxes[0] + col.boxes[col.boxes.length - 1]) / 2 });
   series.setData(columns.map(anchorPoint));
-  series.attachPrimitive(createPointFigurePrimitive(getColumns, boxSize));
+  series.attachPrimitive(createPointFigurePrimitive(getColumns, () => boxSize));
 
   return {
     series,
@@ -171,9 +171,7 @@ export const createPointFigureRenderer: ChartRendererFactory = (chart, bars) => 
       series.setData(columns.map(anchorPoint));
     },
     updateBar: (bar) => {
-      liveBars = liveBars.length > 0 && liveBars[liveBars.length - 1].time === bar.time
-        ? [...liveBars.slice(0, -1), bar]
-        : [...liveBars, bar];
+      liveBars = appendOrReplaceBar(liveBars, bar);
       columns = computePointFigure(liveBars, boxSize);
       series.setData(columns.map(anchorPoint));
     },

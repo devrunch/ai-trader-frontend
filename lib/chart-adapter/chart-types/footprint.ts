@@ -1,67 +1,43 @@
 import { CandlestickSeries } from "lightweight-charts";
-import type { ISeriesPrimitive, IPrimitivePaneView, Time, SeriesAttachedParameter } from "lightweight-charts";
+import type { IPrimitivePaneView, Time } from "lightweight-charts";
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
-import { bucketTicksByBar, clampFetchWindow, FETCH_DEBOUNCE_MS, type BarFootprint } from "./footprint-data";
+import { bucketTicksByBar, createTickFetchLifecycle, type BarFootprint } from "./footprint-data";
+import { appendOrReplaceBar } from "./brick-utils";
+import { UP_COLOR, DOWN_COLOR } from "./colors";
 
-const BUY_COLOR = "#16c78499";
-const SELL_COLOR = "#f0525d99";
+const BUY_COLOR = `${UP_COLOR}99`;
+const SELL_COLOR = `${DOWN_COLOR}99`;
 
 /** Volume Footprint: real candles, with each bar's own buy/sell tick
  *  counts per price level drawn as a small two-sided bar (sell to the
  *  left of center, buy to the right) -- the real per-bar ladder look,
  *  built from real Dukascopy ticks (FOREX/metals only). Re-fetches
- *  whenever the visible time range settles (debounced), clamped to the
- *  backend's own max window -- this is a LIVE view of whatever's on
- *  screen, not the whole loaded history at once (a multi-day footprint
+ *  whenever the visible time range settles (debounced, via
+ *  createTickFetchLifecycle -- shared with TPO's own primitive), clamped
+ *  to the backend's own max window -- this is a LIVE view of whatever's
+ *  on screen, not the whole loaded history at once (a multi-day footprint
  *  would mean fetching millions of ticks for no visual gain at that zoom). */
 function createFootprintPrimitive(
   fetchTicks: ((sinceSec: number, untilSec: number) => Promise<{ t: number; p: number }[] | null>) | undefined,
   getBars: () => ApiOhlcBar[],
-): ISeriesPrimitive<Time> {
-  let attached: SeriesAttachedParameter<Time> | null = null;
+) {
   let footprints = new Map<number, BarFootprint>();
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let unsubscribe: (() => void) | null = null;
-
-  function refetch() {
-    if (!fetchTicks || !attached) return;
-    const visible = attached.chart.timeScale().getVisibleRange();
-    if (!visible) return;
-    const { since, until } = clampFetchWindow(visible.from as unknown as number, visible.to as unknown as number);
-    fetchTicks(since, until).then((ticks) => {
-      if (!attached || !ticks) return;
-      footprints = bucketTicksByBar(getBars(), ticks);
-      attached.requestUpdate();
-    });
-  }
-
-  function scheduleRefetch() {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(refetch, FETCH_DEBOUNCE_MS);
-  }
+  const lifecycle = createTickFetchLifecycle(fetchTicks, (ticks) => {
+    footprints = bucketTicksByBar(getBars(), ticks);
+  });
 
   return {
-    attached(param) {
-      attached = param;
-      const handler = () => scheduleRefetch();
-      param.chart.timeScale().subscribeVisibleTimeRangeChange(handler);
-      unsubscribe = () => param.chart.timeScale().unsubscribeVisibleTimeRangeChange(handler);
-      refetch();
-    },
-    detached() {
-      unsubscribe?.();
-      unsubscribe = null;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      attached = null;
-    },
+    attached: lifecycle.attached,
+    detached: lifecycle.detached,
     paneViews(): readonly IPrimitivePaneView[] {
       return [{
         renderer() {
           return {
             draw(target: CanvasRenderingTarget2D) {
               target.useBitmapCoordinateSpace((scope) => {
+                const attached = lifecycle.getAttached();
                 if (!attached || footprints.size === 0) return;
                 const { series, chart } = attached;
                 const ctx = scope.context;
@@ -109,8 +85,8 @@ function createFootprintPrimitive(
 export const createVolumeFootprintRenderer: ChartRendererFactory = (chart, bars, ctx) => {
   let liveBars = bars;
   const series = chart.addSeries(CandlestickSeries, {
-    upColor: "#16c78455", downColor: "#f0525d55", borderVisible: false,
-    wickUpColor: "#16c78455", wickDownColor: "#f0525d55",
+    upColor: `${UP_COLOR}55`, downColor: `${DOWN_COLOR}55`, borderVisible: false,
+    wickUpColor: `${UP_COLOR}55`, wickDownColor: `${DOWN_COLOR}55`,
   });
   const toPoint = (b: ApiOhlcBar) => ({ time: b.time as never, open: b.open, high: b.high, low: b.low, close: b.close });
   series.setData(bars.map(toPoint));
@@ -120,9 +96,7 @@ export const createVolumeFootprintRenderer: ChartRendererFactory = (chart, bars,
     series,
     setData: (newBars) => { liveBars = newBars; series.setData(newBars.map(toPoint)); },
     updateBar: (bar) => {
-      liveBars = liveBars.length > 0 && liveBars[liveBars.length - 1].time === bar.time
-        ? [...liveBars.slice(0, -1), bar]
-        : [...liveBars, bar];
+      liveBars = appendOrReplaceBar(liveBars, bar);
       series.update(toPoint(bar));
     },
   };

@@ -33,15 +33,27 @@ function sameCalendarDay(a: Date, b: Date): boolean {
 /** `bars` is always time-sorted ascending -- binary search rather than a
  *  maintained lookup map, so there's no separate cache to keep in sync
  *  across mount/loadMore/pushLiveTick. Only the crosshair readout calls
- *  this, at most once per mouse-move tick, so O(log n) is plenty. */
-function findBarByTime(bars: ApiOhlcBar[], time: number): ApiOhlcBar | undefined {
-  let lo = 0, hi = bars.length - 1;
+ *  this, at most once per mouse-move tick, so O(log n) is plenty.
+ *
+ *  Floor match (largest bar time <= `time`), not exact match. Every normal
+ *  chart type renders one point per real bar at that bar's own time, so a
+ *  floor match returns the identical result an exact match would there.
+ *  The brick-family types (Renko/Range/Line Break/Kagi/Point & Figure,
+ *  see chart-types/brick-utils.ts) don't: a brick's own time is the REAL
+ *  bar that completed it, nudged forward by whole seconds when several
+ *  bricks share one bar (strictlyIncreasingTime). An exact match against
+ *  that nudged time almost never hits a real bar, so the readout went
+ *  blank on hover for every one of those chart types -- floor match finds
+ *  the real underlying bar regardless of the nudge, since a nudge of a few
+ *  seconds never reaches the next real bar (this app's shortest interval
+ *  is 1m = 60s apart). */
+export function findBarByTime(bars: ApiOhlcBar[], time: number): ApiOhlcBar | undefined {
+  let lo = 0, hi = bars.length - 1, best = -1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    if (bars[mid].time === time) return bars[mid];
-    if (bars[mid].time < time) lo = mid + 1; else hi = mid - 1;
+    if (bars[mid].time <= time) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
   }
-  return undefined;
+  return best === -1 ? undefined : bars[best];
 }
 
 /** LWC's LineWidth type is the literal union 1|2|3|4, not `number` -- a

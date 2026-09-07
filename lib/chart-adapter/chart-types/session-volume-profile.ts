@@ -2,6 +2,7 @@ import { createCandlesRenderer } from "./candles";
 import { createVolumeProfilePrimitive } from "../volume-profile-primitive";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
+import { appendOrReplaceBar } from "./brick-utils";
 
 /** Real candles, with the SAME Volume Profile histogram this app already
  *  offers as an attachable indicator (see attachVolumeProfile/
@@ -20,9 +21,7 @@ export const createSessionVolumeProfileRenderer: ChartRendererFactory = (chart, 
     series: candles.series,
     setData: (newBars) => { liveBars = newBars; candles.setData(newBars); },
     updateBar: (bar: ApiOhlcBar) => {
-      liveBars = liveBars.length > 0 && liveBars[liveBars.length - 1].time === bar.time
-        ? [...liveBars.slice(0, -1), bar]
-        : [...liveBars, bar];
+      liveBars = appendOrReplaceBar(liveBars, bar);
       candles.updateBar(bar);
     },
   };

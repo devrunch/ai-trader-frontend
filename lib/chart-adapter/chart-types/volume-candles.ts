@@ -1,6 +1,7 @@
 import { CandlestickSeries } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
+import { UP_COLOR, DOWN_COLOR } from "./colors";
 
 /** TradingView's real Volume Candles varies each candle's WIDTH by its own
  *  volume -- not achievable on a plain CandlestickSeries (every bar sits in
@@ -26,7 +27,7 @@ export const createVolumeCandlesRenderer: ChartRendererFactory = (chart, bars) =
     return Math.round(40 + ratio * 215).toString(16).padStart(2, "0");
   };
   const toPoint = (b: ApiOhlcBar) => {
-    const base = b.close >= b.open ? "#16c784" : "#f0525d";
+    const base = b.close >= b.open ? UP_COLOR : DOWN_COLOR;
     const color = base + alphaHex(b.volume ?? 0);
     return { time: b.time as never, open: b.open, high: b.high, low: b.low, close: b.close, color, borderColor: color, wickColor: color };
   };
@@ -35,6 +36,12 @@ export const createVolumeCandlesRenderer: ChartRendererFactory = (chart, bars) =
   return {
     series,
     setData: (bars) => { maxVolume = maxVolumeOf(bars); series.setData(bars.map(toPoint)); },
-    updateBar: (bar) => series.update(toPoint(bar)),
+    // A live tick can push a bar's volume past the max every OTHER bar was
+    // scaled against -- without this, that one bar reads correctly (its own
+    // ratio still clamps to 1) but every already-rendered bar is now
+    // relatively too dim until the next full setData, drifting from the
+    // "opacity relative to the true loaded-range max" this renderer
+    // promises in its own doc comment above.
+    updateBar: (bar) => { maxVolume = Math.max(maxVolume, bar.volume ?? 0); series.update(toPoint(bar)); },
   };
 };

@@ -1,10 +1,11 @@
 import { LineSeries } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
-import { strictlyIncreasingTime, defaultBoxSize, type Brick } from "./brick-utils";
+import { strictlyIncreasingTime, defaultBoxSize, appendOrReplaceBar, type Brick } from "./brick-utils";
+import { UP_COLOR, DOWN_COLOR } from "./colors";
 
-const YANG = "#16c784"; // rising line
-const YIN = "#f0525d";  // falling line
+const YANG = UP_COLOR; // rising line
+const YIN = DOWN_COLOR;  // falling line
 
 interface KagiPoint { time: number; value: number; direction: 1 | -1 }
 
@@ -58,9 +59,7 @@ export const createKagiRenderer: ChartRendererFactory = (chart, bars) => {
     series,
     setData: (newBars) => { liveBars = newBars; series.setData(render(newBars)); },
     updateBar: (bar) => {
-      liveBars = liveBars.length > 0 && liveBars[liveBars.length - 1].time === bar.time
-        ? [...liveBars.slice(0, -1), bar]
-        : [...liveBars, bar];
+      liveBars = appendOrReplaceBar(liveBars, bar);
       series.setData(render(liveBars));
     },
   };

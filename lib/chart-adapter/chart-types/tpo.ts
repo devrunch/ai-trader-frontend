@@ -1,9 +1,10 @@
 import { CandlestickSeries } from "lightweight-charts";
-import type { ISeriesPrimitive, IPrimitivePaneView, Time, SeriesAttachedParameter } from "lightweight-charts";
+import type { IPrimitivePaneView } from "lightweight-charts";
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 import type { ApiTick } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
-import { clampFetchWindow, FETCH_DEBOUNCE_MS } from "./footprint-data";
+import { createTickFetchLifecycle } from "./footprint-data";
+import { UP_COLOR, DOWN_COLOR } from "./colors";
 
 /** Standard 30-minute TPO period -- the conventional Market Profile letter
  *  period (TradingView's own default). Not user-configurable here (no
@@ -47,49 +48,22 @@ function buildTpoHistogram(ticks: ApiTick[]): TpoHistogram | null {
 
 function createTpoPrimitive(
   fetchTicks: ((sinceSec: number, untilSec: number) => Promise<{ t: number; p: number }[] | null>) | undefined,
-): ISeriesPrimitive<Time> {
-  let attached: SeriesAttachedParameter<Time> | null = null;
+) {
   let hist: TpoHistogram | null = null;
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let unsubscribe: (() => void) | null = null;
-
-  function refetch() {
-    if (!fetchTicks || !attached) return;
-    const visible = attached.chart.timeScale().getVisibleRange();
-    if (!visible) return;
-    const { since, until } = clampFetchWindow(visible.from as unknown as number, visible.to as unknown as number);
-    fetchTicks(since, until).then((ticks) => {
-      if (!attached || !ticks) return;
-      hist = buildTpoHistogram(ticks);
-      attached.requestUpdate();
-    });
-  }
-
-  function scheduleRefetch() {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(refetch, FETCH_DEBOUNCE_MS);
-  }
+  const lifecycle = createTickFetchLifecycle(fetchTicks, (ticks) => {
+    hist = buildTpoHistogram(ticks);
+  });
 
   return {
-    attached(param) {
-      attached = param;
-      const handler = () => scheduleRefetch();
-      param.chart.timeScale().subscribeVisibleTimeRangeChange(handler);
-      unsubscribe = () => param.chart.timeScale().unsubscribeVisibleTimeRangeChange(handler);
-      refetch();
-    },
-    detached() {
-      unsubscribe?.();
-      unsubscribe = null;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      attached = null;
-    },
+    attached: lifecycle.attached,
+    detached: lifecycle.detached,
     paneViews(): readonly IPrimitivePaneView[] {
       return [{
         renderer() {
           return {
             draw(target: CanvasRenderingTarget2D) {
               target.useBitmapCoordinateSpace((scope) => {
+                const attached = lifecycle.getAttached();
                 if (!attached || !hist) return;
                 const { series, chart } = attached;
                 const ctx = scope.context;
@@ -126,8 +100,8 @@ function createTpoPrimitive(
  *  ordinary Volume Profile already accepts. */
 export const createTpoRenderer: ChartRendererFactory = (chart, bars, ctx) => {
   const series = chart.addSeries(CandlestickSeries, {
-    upColor: "#16c784", downColor: "#f0525d", borderVisible: false,
-    wickUpColor: "#16c784", wickDownColor: "#f0525d",
+    upColor: UP_COLOR, downColor: DOWN_COLOR, borderVisible: false,
+    wickUpColor: UP_COLOR, wickDownColor: DOWN_COLOR,
   });
   const toPoint = (b: typeof bars[number]) => ({ time: b.time as never, open: b.open, high: b.high, low: b.low, close: b.close });
   series.setData(bars.map(toPoint));

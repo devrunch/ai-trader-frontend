@@ -1,7 +1,8 @@
 import { CandlestickSeries } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
-import { type Brick, strictlyIncreasingTime, defaultBoxSize } from "./brick-utils";
+import { type Brick, strictlyIncreasingTime, defaultBoxSize, appendOrReplaceBar } from "./brick-utils";
+import { UP_COLOR, DOWN_COLOR } from "./colors";
 
 /** Traditional Renko: a fixed brick size, a new brick every time price
  *  closes a full brick beyond the running base -- in EITHER direction,
@@ -44,8 +45,8 @@ const toPoint = (b: Brick) => ({ time: b.time as never, open: b.open, high: b.hi
 export const createRenkoRenderer: ChartRendererFactory = (chart, bars) => {
   let liveBars = bars;
   const series = chart.addSeries(CandlestickSeries, {
-    upColor: "#16c784", downColor: "#f0525d", borderVisible: false,
-    wickUpColor: "#16c784", wickDownColor: "#f0525d",
+    upColor: UP_COLOR, downColor: DOWN_COLOR, borderVisible: false,
+    wickUpColor: UP_COLOR, wickDownColor: DOWN_COLOR,
   });
   series.setData(strictlyIncreasingTime(computeRenkoBricks(bars)).map(toPoint));
 
@@ -61,9 +62,7 @@ export const createRenkoRenderer: ChartRendererFactory = (chart, bars) => {
     // here tops out in the low thousands of bars, and this is O(bars), not
     // O(bars^2) -- only runs once per real price update, not per frame.
     updateBar: (bar) => {
-      liveBars = liveBars.length > 0 && liveBars[liveBars.length - 1].time === bar.time
-        ? [...liveBars.slice(0, -1), bar]
-        : [...liveBars, bar];
+      liveBars = appendOrReplaceBar(liveBars, bar);
       series.setData(strictlyIncreasingTime(computeRenkoBricks(liveBars)).map(toPoint));
     },
   };

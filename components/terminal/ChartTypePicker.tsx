@@ -33,7 +33,15 @@ export function ChartTypePicker({ value, onChange }: {
       <button
         onClick={() => setOpen(true)}
         title={`Chart type: ${current?.label ?? value}`}
-        aria-label="Change chart type"
+        // The icon-only content has no accessible name of its own, so this
+        // has to carry BOTH the action and the current selection -- an
+        // earlier version used a static "Change chart type" label. `title`
+        // alone doesn't reach assistive tech (aria-label wins over it in
+        // the accessible-name computation whenever both are present), so a
+        // screen-reader user lost any way to hear which type was active
+        // without opening the modal. Same information as `title`, just
+        // also the thing actually announced.
+        aria-label={`Change chart type, currently ${current?.label ?? value}`}
         className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground border border-transparent hover:border-border transition-colors shrink-0"
       >
         {currentIcon ?? <span className="text-[10px] font-mono font-semibold">{value}</span>}
@@ -56,7 +64,7 @@ export function ChartTypePicker({ value, onChange }: {
                 value === t.id ? "bg-primary/15 text-link" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
               }`}
             >
-              <span className="shrink-0">{CHART_TYPE_ICONS[t.id]}</span>
+              <span className="shrink-0">{CHART_TYPE_ICONS[t.id] ?? <span className="text-[10px] font-mono">{t.id}</span>}</span>
               {t.label}
             </button>
           ))}

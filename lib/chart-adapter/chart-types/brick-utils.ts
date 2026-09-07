@@ -1,3 +1,4 @@
+import type { IChartApi } from "lightweight-charts";
 import type { ApiOhlcBar } from "@/lib/api";
 
 /** One rendered brick/box/line-segment for the non-time-indexed family
@@ -39,4 +40,47 @@ export function defaultBoxSize(bars: ApiOhlcBar[], divisions = 40): number {
   for (const b of bars) { if (b.low < lo) lo = b.low; if (b.high > hi) hi = b.high; }
   const span = hi - lo;
   return span > 0 ? span / divisions : Math.max(lo, 1) * 0.01;
+}
+
+/** Every renderer that needs the full bar history live (a custom primitive
+ *  reading `getBars()` on every draw, or a synthetic-axis type recomputing
+ *  its whole sequence on every tick) keeps its own rolling mirror of
+ *  `this.bars`, updated the same way the adapter's own pushLiveTick updates
+ *  its copy: an in-place edit of the still-forming (last) bar shares its
+ *  time with what's already there, a genuinely new bar doesn't. Shared here
+ *  because 9 renderer files had this exact 5-line block copy-pasted --
+ *  any future correction to the merge rule needed the same edit in all 9. */
+export function appendOrReplaceBar(bars: ApiOhlcBar[], bar: ApiOhlcBar): ApiOhlcBar[] {
+  return bars.length > 0 && bars[bars.length - 1].time === bar.time
+    ? [...bars.slice(0, -1), bar]
+    : [...bars, bar];
+}
+
+/** Autoscale-only helper for a renderer whose anchor series doesn't plot
+ *  its own true price extent -- HLC Area's anchor plots just the close
+ *  line (the real high/low band is drawn by a primitive on top), High-Low
+ *  plots an invisible midpoint (the real high-low line is drawn by a
+ *  primitive too). Both need LWC's own autoscale widened to the real
+ *  high/low range of whatever's visible, or the primitive's own drawing
+ *  gets clipped by a price scale sized to the anchor's narrower data.
+ *  Falls back to the full loaded range when nothing is visible yet, or
+ *  the chart hasn't laid one out. */
+export function visibleRangeAutoscaleInfo(chart: IChartApi, getBars: () => ApiOhlcBar[]) {
+  return () => {
+    const bars = getBars();
+    if (bars.length === 0) return null;
+    const visible = chart.timeScale().getVisibleRange();
+    const from = visible ? (visible.from as unknown as number) : -Infinity;
+    const to = visible ? (visible.to as unknown as number) : Infinity;
+    let lo = Infinity, hi = -Infinity, any = false;
+    for (const b of bars) {
+      if (b.time < from || b.time > to) continue;
+      any = true;
+      if (b.low < lo) lo = b.low;
+      if (b.high > hi) hi = b.high;
+    }
+    if (!any) { for (const b of bars) { if (b.low < lo) lo = b.low; if (b.high > hi) hi = b.high; } }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+    return { priceRange: { minValue: lo, maxValue: hi } };
+  };
 }

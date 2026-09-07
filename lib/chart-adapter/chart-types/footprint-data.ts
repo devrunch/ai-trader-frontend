@@ -1,3 +1,4 @@
+import type { SeriesAttachedParameter, Time } from "lightweight-charts";
 import type { ApiOhlcBar, ApiTick } from "@/lib/api";
 
 /** Real ECN ticks only ever cover FOREX/metals (Dukascopy) and only a
@@ -37,16 +38,27 @@ export function bucketTicksByBar(bars: ApiOhlcBar[], ticks: ApiTick[]): Map<numb
   const result = new Map<number, BarFootprint>();
   if (bars.length === 0 || ticks.length === 0) return result;
 
-  const starts = bars.map((b) => b.time);
+  // The buy/sell classification below compares each tick to the ONE
+  // immediately before it, and the bar lookup walks a single forward
+  // pointer -- both assume ascending time. The backend contract never
+  // actually guarantees that ordering, so it's enforced here rather than
+  // trusted: an out-of-order tick would otherwise both misclassify
+  // buy/sell (compared against the wrong "previous" price) and break the
+  // forward pointer, which can only ever advance.
+  const sorted = [...ticks].sort((a, b) => a.t - b.t);
+
+  let barIdx = 0;
   let lastPrice: number | null = null;
 
-  for (const tick of ticks) {
+  for (const tick of sorted) {
     const tSec = tick.t / 1000;
-    // Last bar whose start is <= tSec -- the bar this tick belongs to.
-    let idx = -1;
-    for (let i = starts.length - 1; i >= 0; i--) { if (starts[i] <= tSec) { idx = i; break; } }
-    if (idx === -1) { lastPrice = tick.p; continue; }
-    const bar = bars[idx];
+    // Both `bars` and `sorted` are ascending, so the bar owning this tick
+    // can never be earlier than the one that owned the previous tick --
+    // advance forward only. O(ticks + bars) total, not the O(ticks x bars)
+    // a fresh backward scan per tick would cost.
+    while (barIdx + 1 < bars.length && bars[barIdx + 1].time <= tSec) barIdx++;
+    if (bars[barIdx].time > tSec) { lastPrice = tick.p; continue; } // before the first bar entirely
+    const bar = bars[barIdx];
 
     let fp = result.get(bar.time);
     if (!fp) {
@@ -72,4 +84,70 @@ export function bucketTicksByBar(bars: ApiOhlcBar[], ticks: ApiTick[]): Map<numb
 export function clampFetchWindow(fromSec: number, toSec: number): { since: number; until: number } {
   const since = Math.max(fromSec, toSec - MAX_FETCH_WINDOW_SECONDS);
   return { since: Math.floor(since), until: Math.ceil(toSec) };
+}
+
+/** Shared attach/detach/debounce/re-fetch lifecycle for Volume Footprint's
+ *  and TPO's own primitives -- the two chart types that asynchronously
+ *  re-fetch real ticks as the visible range changes, rather than working
+ *  off the bars already loaded like every other renderer. Only the fetch
+ *  orchestration is shared; each caller still owns its own aggregation
+ *  (`onTicks`) and its own canvas drawing.
+ *
+ *  A `requestId` guards against a slower, older fetch landing AFTER a newer
+ *  one and silently overwriting fresher data with stale data -- e.g. the
+ *  user pans left then quickly right; if the (now-abandoned) left window's
+ *  fetch takes longer than the right window's, its `.then` used to run
+ *  last and clobber the correct, current result. Only the response whose
+ *  request is still the latest one issued is ever applied. */
+export function createTickFetchLifecycle(
+  fetchTicks: ((sinceSec: number, untilSec: number) => Promise<ApiTick[] | null>) | undefined,
+  onTicks: (ticks: ApiTick[]) => void,
+): {
+  attached: (param: SeriesAttachedParameter<Time>) => void;
+  detached: () => void;
+  getAttached: () => SeriesAttachedParameter<Time> | null;
+} {
+  let attachedParam: SeriesAttachedParameter<Time> | null = null;
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let unsubscribe: (() => void) | null = null;
+  let requestId = 0;
+
+  function refetch() {
+    if (!fetchTicks || !attachedParam) return;
+    const visible = attachedParam.chart.timeScale().getVisibleRange();
+    if (!visible) return;
+    const { since, until } = clampFetchWindow(visible.from as unknown as number, visible.to as unknown as number);
+    const thisRequest = ++requestId;
+    fetchTicks(since, until).then((ticks) => {
+      // A later refetch may already have started (or finished) since this
+      // one was issued -- `thisRequest !== requestId` means it has, so this
+      // response is stale and must not overwrite whatever the newer one
+      // already applied (or will apply).
+      if (!attachedParam || !ticks || thisRequest !== requestId) return;
+      onTicks(ticks);
+      attachedParam.requestUpdate();
+    });
+  }
+
+  function scheduleRefetch() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(refetch, FETCH_DEBOUNCE_MS);
+  }
+
+  return {
+    attached(param) {
+      attachedParam = param;
+      const handler = () => scheduleRefetch();
+      param.chart.timeScale().subscribeVisibleTimeRangeChange(handler);
+      unsubscribe = () => param.chart.timeScale().unsubscribeVisibleTimeRangeChange(handler);
+      refetch();
+    },
+    detached() {
+      unsubscribe?.();
+      unsubscribe = null;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      attachedParam = null;
+    },
+    getAttached: () => attachedParam,
+  };
 }

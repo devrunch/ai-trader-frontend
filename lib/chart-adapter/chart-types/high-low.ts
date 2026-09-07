@@ -1,11 +1,10 @@
 import { LineSeries } from "lightweight-charts";
-import type { ISeriesPrimitive, IPrimitivePaneView, Time, SeriesAttachedParameter, IChartApi } from "lightweight-charts";
+import type { ISeriesPrimitive, IPrimitivePaneView, Time, SeriesAttachedParameter } from "lightweight-charts";
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
-
-const UP = "#16c784";
-const DOWN = "#f0525d";
+import { appendOrReplaceBar, visibleRangeAutoscaleInfo } from "./brick-utils";
+import { UP_COLOR as UP, DOWN_COLOR as DOWN } from "./colors";
 
 /** A plain vertical line from low to high, up/down colored, no open/close
  *  ticks at all -- LWC's own BarSeries always draws a close-side tick (only
@@ -52,31 +51,14 @@ function createHighLowPrimitive(getBars: () => ApiOhlcBar[]): ISeriesPrimitive<T
   };
 }
 
-function highLowAutoscaleInfo(chart: IChartApi, getBars: () => ApiOhlcBar[]) {
-  return () => {
-    const bars = getBars();
-    if (bars.length === 0) return null;
-    const visible = chart.timeScale().getVisibleRange();
-    const from = visible ? (visible.from as unknown as number) : -Infinity;
-    const to = visible ? (visible.to as unknown as number) : Infinity;
-    let lo = Infinity, hi = -Infinity, any = false;
-    for (const b of bars) {
-      if (b.time < from || b.time > to) continue;
-      any = true;
-      if (b.low < lo) lo = b.low;
-      if (b.high > hi) hi = b.high;
-    }
-    if (!any) for (const b of bars) { if (b.low < lo) lo = b.low; if (b.high > hi) hi = b.high; }
-    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
-    return { priceRange: { minValue: lo, maxValue: hi } };
-  };
-}
-
 export const createHighLowRenderer: ChartRendererFactory = (chart, bars) => {
   let liveBars = bars;
   const series = chart.addSeries(LineSeries, {
     lineVisible: false, pointMarkersVisible: false,
-    autoscaleInfoProvider: highLowAutoscaleInfo(chart, () => liveBars),
+    // See visibleRangeAutoscaleInfo's own docs -- shared with HLC Area, the
+    // other primitive-drawn type whose anchor series doesn't carry the
+    // real high/low extent LWC needs to autoscale against.
+    autoscaleInfoProvider: visibleRangeAutoscaleInfo(chart, () => liveBars),
   });
   const anchorPoint = (b: ApiOhlcBar) => ({ time: b.time as never, value: (b.high + b.low) / 2 });
   series.setData(bars.map(anchorPoint));
@@ -86,9 +68,7 @@ export const createHighLowRenderer: ChartRendererFactory = (chart, bars) => {
     series,
     setData: (newBars) => { liveBars = newBars; series.setData(newBars.map(anchorPoint)); },
     updateBar: (bar) => {
-      liveBars = liveBars.length > 0 && liveBars[liveBars.length - 1].time === bar.time
-        ? [...liveBars.slice(0, -1), bar]
-        : [...liveBars, bar];
+      liveBars = appendOrReplaceBar(liveBars, bar);
       series.update(anchorPoint(bar));
     },
   };

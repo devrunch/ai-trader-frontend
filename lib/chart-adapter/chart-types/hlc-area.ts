@@ -1,8 +1,9 @@
 import { LineSeries } from "lightweight-charts";
-import type { ISeriesPrimitive, IPrimitivePaneView, Time, SeriesAttachedParameter, IChartApi } from "lightweight-charts";
+import type { ISeriesPrimitive, IPrimitivePaneView, Time, SeriesAttachedParameter } from "lightweight-charts";
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChartRendererFactory } from "./types";
+import { appendOrReplaceBar, visibleRangeAutoscaleInfo } from "./brick-utils";
 
 /** A filled band between each bar's high and low, real close line on top --
  *  no native LWC series draws "the area between two arbitrary lines," so
@@ -60,37 +61,16 @@ function createHlcAreaPrimitive(getBars: () => ApiOhlcBar[]): ISeriesPrimitive<T
   };
 }
 
-/** Autoscale-only helper: the anchor series plots just the CLOSE line, so
- *  LWC's own autoscale would range to close prices alone and clip the
- *  high/low band the primitive draws on top -- this widens it to the real
- *  high/low extent of whatever's currently visible (falling back to the
- *  full loaded range when nothing is, or when the chart hasn't laid out a
- *  visible range yet). */
-function hlcAutoscaleInfo(chart: IChartApi, getBars: () => ApiOhlcBar[]) {
-  return () => {
-    const bars = getBars();
-    if (bars.length === 0) return null;
-    const visible = chart.timeScale().getVisibleRange();
-    const from = visible ? (visible.from as unknown as number) : -Infinity;
-    const to = visible ? (visible.to as unknown as number) : Infinity;
-    let lo = Infinity, hi = -Infinity, any = false;
-    for (const b of bars) {
-      if (b.time < from || b.time > to) continue;
-      any = true;
-      if (b.low < lo) lo = b.low;
-      if (b.high > hi) hi = b.high;
-    }
-    if (!any) { for (const b of bars) { if (b.low < lo) lo = b.low; if (b.high > hi) hi = b.high; } }
-    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
-    return { priceRange: { minValue: lo, maxValue: hi } };
-  };
-}
-
 export const createHlcAreaRenderer: ChartRendererFactory = (chart, bars) => {
   let liveBars = bars;
   const series = chart.addSeries(LineSeries, {
     color: "#6c5ce7", lineWidth: 2,
-    autoscaleInfoProvider: hlcAutoscaleInfo(chart, () => liveBars),
+    // The anchor plots just the close line, so LWC's own autoscale would
+    // range to close prices alone and clip the real high/low band the
+    // primitive above draws on top -- see visibleRangeAutoscaleInfo's own
+    // docs (shared with High-Low, the other primitive-drawn type with the
+    // same "anchor doesn't carry the real price extent" problem).
+    autoscaleInfoProvider: visibleRangeAutoscaleInfo(chart, () => liveBars),
   });
   const toPoint = (b: ApiOhlcBar) => ({ time: b.time as never, value: b.close });
   series.setData(bars.map(toPoint));
@@ -103,9 +83,7 @@ export const createHlcAreaRenderer: ChartRendererFactory = (chart, bars) => {
     // an in-place edit of the still-forming (last) bar, or a genuinely new
     // one appended after it -- never anything else.
     updateBar: (bar) => {
-      liveBars = liveBars.length > 0 && liveBars[liveBars.length - 1].time === bar.time
-        ? [...liveBars.slice(0, -1), bar]
-        : [...liveBars, bar];
+      liveBars = appendOrReplaceBar(liveBars, bar);
       series.update(toPoint(bar));
     },
   };
