@@ -435,7 +435,10 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
         {/* Right panel — tabbed */}
         <div className="w-85 shrink-0 border-l border-border flex flex-col">
           <div className="flex border-b border-border shrink-0">
-            {([["signal", "Signal"], ["trade", "Trade"], ["positions", "Positions"], ["chat", "Chat"]] as const).map(([k, label]) => (
+            {/* Signal tab hidden -- generation was producing unreliable
+                directions and isn't wanted in the terminal right now. Left
+                in the type/state machinery below so it's a one-line revert. */}
+            {([["trade", "Trade"], ["positions", "Positions"], ["chat", "Chat"]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setRightTab(k as typeof rightTab)}
                 className={`flex-1 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors ${rightTab === k ? "text-link border-primary" : "text-muted-foreground border-transparent hover:text-foreground"}`}>
                 {label}

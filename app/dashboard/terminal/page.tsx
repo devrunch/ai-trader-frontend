@@ -441,7 +441,9 @@ export default function TerminalPage() {
     });
   }
 
-  const [rightTab, setRightTab] = useState<"chart" | "signal" | "trade" | "positions" | "chat">("signal");
+  // Was "signal" -- that tab is hidden now (unreliable directions), so
+  // opening on it would land on a panel with no button to leave it from.
+  const [rightTab, setRightTab] = useState<"chart" | "signal" | "trade" | "positions" | "chat">("trade");
   const [positions, setPositions] = useState<ApiPosition[]>([]);
   /* Derived below from (rightTab, positionsLoaded) — holding it in state meant
      setting it synchronously inside an effect, which cascades a render. */
@@ -795,13 +797,13 @@ export default function TerminalPage() {
   // A mobile session should open on the chart, not desktop's side-panel
   // default -- but only the first time this resolves true, and only if the
   // user hasn't already touched the tab (still sitting at the untouched
-  // "signal" default). Adjusting state during render (not inside an effect)
+  // "trade" default). Adjusting state during render (not inside an effect)
   // is the same pattern this file already uses for highlightedIndex above
   // (see searchListKey/prevSearchListKey) -- mobileDefaultApplied guards it
   // from firing more than once, so crossing the breakpoint later doesn't
   // yank the user off a tab they deliberately picked.
   const [mobileDefaultApplied, setMobileDefaultApplied] = useState(false);
-  if (isMobile && !mobileDefaultApplied && rightTab === "signal") {
+  if (isMobile && !mobileDefaultApplied && rightTab === "trade") {
     setMobileDefaultApplied(true);
     setRightTab("chart");
   }

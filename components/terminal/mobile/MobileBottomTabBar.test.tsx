@@ -4,11 +4,12 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { MobileBottomTabBar } from "./MobileBottomTabBar";
 
 describe("MobileBottomTabBar", () => {
-  it("renders all 5 tabs", () => {
+  it("renders all 4 visible tabs (Signal hidden)", () => {
     render(<MobileBottomTabBar active="chart" onChange={() => {}} />);
-    for (const label of ["Chart", "Signal", "Trade", "Positions", "Chat"]) {
+    for (const label of ["Chart", "Trade", "Positions", "Chat"]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
+    expect(screen.queryByRole("button", { name: "Signal" })).not.toBeInTheDocument();
   });
 
   it("calls onChange with the tapped tab's key", () => {
@@ -19,9 +20,9 @@ describe("MobileBottomTabBar", () => {
   });
 
   it("shows a text label only on the active tab", () => {
-    render(<MobileBottomTabBar active="signal" onChange={() => {}} />);
-    const signalButton = screen.getByRole("button", { name: "Signal" });
-    expect(signalButton.querySelector("span:not(.sr-only)")).not.toBeNull();
+    render(<MobileBottomTabBar active="trade" onChange={() => {}} />);
+    const tradeButton = screen.getByRole("button", { name: "Trade" });
+    expect(tradeButton.querySelector("span:not(.sr-only)")).not.toBeNull();
     const chatButton = screen.getByRole("button", { name: "Chat" });
     expect(chatButton.querySelector("span:not(.sr-only)")).toBeNull();
   });

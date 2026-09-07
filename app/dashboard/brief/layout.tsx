@@ -4,8 +4,8 @@ import type { Metadata } from "next";
    metadata — hence this tiny server layout. Without it every route in
    the app shared a single browser-tab title. */
 export const metadata: Metadata = {
-  title: "Morning Brief",
-  description: "Overnight global cues and the day's shortlist, before the open.",
+  title: "Home",
+  description: "Today's headlines with real, per-stock impact -- divided by market.",
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {

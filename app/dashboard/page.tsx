@@ -6,10 +6,11 @@ import { useRouter } from "next/navigation";
 /**
  * Time-aware landing.
  *
- * The product's core loop is "open before the market, get the day's plan" — so
- * pre-market and post-close we land on the Brief. During market hours the user
- * is working, so we land on the Terminal. If they navigate away manually we
- * remember that for the session; a smart default should never fight the user.
+ * Pre-market and post-close we land on Home (top-impact news) — nothing to
+ * trade yet, so the news that'll move tomorrow's open is the useful thing to
+ * see. During market hours the user is working, so we land on the Terminal.
+ * If they navigate away manually we remember that for the session; a smart
+ * default should never fight the user.
  */
 export default function DashboardLanding() {
   const router = useRouter();

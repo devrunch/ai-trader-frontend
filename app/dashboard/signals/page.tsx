@@ -4,10 +4,12 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { indicatorLabel, indicatorValue } from "@/lib/indicator-labels";
 import { errorMessage, getSignals, getMarketNews, getSignalPerformance, MIN_BUCKET_SAMPLE,
-  type ApiSignal, type ApiNewsItem, type SignalPerformance, type NewsAssetClass } from "@/lib/api";
+  type ApiSignal, type ApiNewsItem, type SignalPerformance } from "@/lib/api";
 import { useMarketStatus } from "@/lib/market-status";
 import { Disclaimer } from "@/components/Disclaimer";
 import { ErrorState } from "@/components/ErrorState";
+import { NewsArticleCard } from "@/components/news/NewsArticleCard";
+import { AssetClassFilterBar, countByAssetClass, type AssetClassFilter } from "@/components/news/AssetClassFilterBar";
 
 /* ─── Signal mapping ─── */
 interface Signal {
@@ -48,25 +50,10 @@ function mapSignal(s: ApiSignal): Signal {
   };
 }
 
-function timeAgo(iso: string) {
-  try {
-    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-    if (diff < 3600)  return `${Math.round(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.round(diff / 3600)}h ago`;
-    return `${Math.round(diff / 86400)}d ago`;
-  } catch { return ""; }
-}
-
 type Tab = "Signals" | "Performance" | "News";
 type ActionFilter = "All" | "BUY" | "SELL";
 type ConfFilter = "All" | "High" | "Medium";
 type NewsFilter = "All" | "POSITIVE" | "NEGATIVE" | "NEUTRAL" | "HAS_IMPACT";
-type AssetClassFilter = "All" | NewsAssetClass;
-/** Fixed order, not derived from whatever happens to be in today's news --
- *  this app's own real exchange set (see market.controller.ts's EXCHANGES)
- *  plus CRYPTO/OTHER, so the filter row's shape doesn't jump around as
- *  headlines come and go. */
-const ASSET_CLASSES: NewsAssetClass[] = ["NSE", "BSE", "NASDAQ", "NYSE", "FOREX", "MCX", "CRYPTO", "OTHER"];
 
 export default function SignalsPage() {
   const [tab, setTab] = useState<Tab>("Signals");
@@ -158,13 +145,7 @@ export default function SignalsPage() {
     : newsFilter === "HAS_IMPACT" ? news.filter(n => (n.impacts?.length ?? 0) > 0)
     : news.filter(n => n.sentiment === newsFilter);
 
-  /* Per-article, not per-impact -- an article with two NSE-tagged impacts
-     should count once toward "how many headlines touch NSE today", not two. */
-  const assetClassCounts: Partial<Record<NewsAssetClass, number>> = {};
-  for (const n of newsBySentiment) {
-    const classesHere = new Set((n.impacts ?? []).map(imp => imp.assetClass));
-    for (const cls of classesHere) assetClassCounts[cls] = (assetClassCounts[cls] ?? 0) + 1;
-  }
+  const assetClassCounts = countByAssetClass(newsBySentiment);
 
   const filteredNews = assetClassFilter === "All" ? newsBySentiment
     : newsBySentiment.filter(n => n.impacts?.some(imp => imp.assetClass === assetClassFilter));
@@ -518,31 +499,7 @@ export default function SignalsPage() {
               ))}
             </div>
 
-            {/* Divides today's impacts by market/asset class -- NSE, BSE,
-                NASDAQ, NYSE, FOREX, MCX, plus CRYPTO (informational; this
-                app has no crypto trading integration) and OTHER, the honest
-                fallback the signals-side analysis uses when nothing real
-                fits. A count of 0 still shows the chip; it just does
-                nothing useful to click. */}
-            <div className="flex flex-wrap gap-1.5">
-              <button onClick={() => setAssetClassFilter("All")}
-                className="px-2.5 py-1 text-[10px] font-mono font-medium border transition-colors"
-                style={assetClassFilter === "All"
-                  ? { background: "var(--foreground)", color: "var(--background)", borderColor: "var(--foreground)" }
-                  : { borderColor: "var(--border)", color: "var(--muted-foreground)" }}>
-                All markets
-              </button>
-              {ASSET_CLASSES.map(cls => (
-                <button key={cls} onClick={() => setAssetClassFilter(cls)}
-                  disabled={!assetClassCounts[cls]}
-                  className="px-2.5 py-1 text-[10px] font-mono font-medium border transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  style={assetClassFilter === cls
-                    ? { background: "var(--foreground)", color: "var(--background)", borderColor: "var(--foreground)" }
-                    : { borderColor: "var(--border)", color: "var(--muted-foreground)" }}>
-                  {cls} <span className="opacity-60">{assetClassCounts[cls] ?? 0}</span>
-                </button>
-              ))}
-            </div>
+            <AssetClassFilterBar counts={assetClassCounts} value={assetClassFilter} onChange={setAssetClassFilter} />
 
             {newsLoading ? (
               <div className="p-10 text-center text-muted-foreground text-sm">Loading news…</div>
@@ -553,48 +510,8 @@ export default function SignalsPage() {
                 No articles right now. Live news needs a NEWS_API_KEY configured on the signals service.
               </div>
             ) : (
-              <div className="border border-border bg-card">
-                {filteredNews.map((n, i) => {
-                  const col = n.sentiment === "POSITIVE" ? "var(--buy)" : n.sentiment === "NEGATIVE" ? "var(--sell)" : "var(--muted-foreground)";
-                  return (
-                    <a key={n.id} href={n.url} target="_blank" rel="noreferrer"
-                      className={`block px-4 py-3.5 hover:bg-secondary/40 transition-colors ${i < filteredNews.length - 1 ? "border-b border-border" : ""}`}>
-                      <div className="flex items-start justify-between gap-3 mb-1.5">
-                        <h3 className="text-sm font-medium leading-snug">{n.headline}</h3>
-                        <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ background: col, color: "#0b0e14" }}>{n.sentiment}</span>
-                      </div>
-                      {n.description && <p className="text-xs text-muted-foreground leading-relaxed mb-2 line-clamp-2">{n.description}</p>}
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono mb-1">
-                        <span>{n.source}</span><span>·</span><span>{timeAgo(n.publishedAt)}</span>
-                      </div>
-                      {/* Real per-stock impact, not a keyword-matched ticker
-                          chip -- see app/market/news.py's own _analyze_impacts.
-                          Silent when the analysis genuinely found nothing (most
-                          headlines don't move a tradeable instrument, and
-                          saying so on every row would be noise); an explicit
-                          note only when the analysis itself couldn't run at
-                          all, since that's the one case worth flagging. */}
-                      {n.impacts === null ? (
-                        <p className="text-[10px] text-muted-foreground/70 italic">Stock-impact analysis unavailable for this headline</p>
-                      ) : n.impacts.length > 0 ? (
-                        <div className="flex flex-col gap-1 mt-1.5">
-                          {n.impacts.map((imp, idx) => (
-                            <div key={idx} className="flex items-start gap-2">
-                              <span className="shrink-0 px-1 py-0.5 text-[9px] font-mono text-muted-foreground border border-border">
-                                {imp.assetClass}
-                              </span>
-                              <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-bold"
-                                style={{ background: imp.direction === "up" ? "var(--buy)" : "var(--sell)", color: "#0b0e14" }}>
-                                {imp.symbol} {imp.direction === "up" ? "↑" : "↓"}
-                              </span>
-                              <span className="text-[11px] text-muted-foreground leading-snug">{imp.reason}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </a>
-                  );
-                })}
+              <div className="border border-border bg-card divide-y divide-border">
+                {filteredNews.map(n => <NewsArticleCard key={n.id} article={n} />)}
               </div>
             )}
           </div>

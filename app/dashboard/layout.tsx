@@ -8,11 +8,14 @@ import { useCurrentUser } from "@/lib/use-current-user";
 import { API_BASE_URL } from "@/lib/api/client";
 
 const TABS = [
-  { href: "/dashboard/brief",     label: "Brief"     },
+  // Was "Brief" -- the old macro-cues-plus-candidates page rarely had
+  // anything to show. Repurposed (same href, so it keeps its place as the
+  // off-hours landing page) into a real homepage: top-impact news.
+  { href: "/dashboard/brief",     label: "Home"      },
   { href: "/dashboard/terminal",  label: "Terminal"  },
-  // The track record was reachable only from an empty state and one Brief link.
-  // A product whose credibility rests on publishing its numbers should not hide them.
-  { href: "/dashboard/signals",   label: "Signals"   },
+  // Signals tab hidden -- generation was producing unreliable directions,
+  // not wanted right now. Route/backend untouched, so this is reversible;
+  // see app/dashboard/signals/page.tsx.
   // Backtests used to exist only inside the chat message that produced them —
   // scroll past it and the run was gone.
   { href: "/dashboard/strategies", label: "Strategies" },
