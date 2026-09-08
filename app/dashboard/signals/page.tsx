@@ -143,7 +143,11 @@ export default function SignalsPage() {
 
   const newsBySentiment = newsFilter === "All" ? news
     : newsFilter === "HAS_IMPACT" ? news.filter(n => (n.impacts?.length ?? 0) > 0)
-    : news.filter(n => n.sentiment === newsFilter);
+    // sentimentAvailable, not just the label: an unscored article arrives
+    // as NEUTRAL/0, so filtering on the label alone would file every
+    // headline of a failed scoring run under "Neutral" as if FinBERT had
+    // actually read them that way.
+    : news.filter(n => n.sentimentAvailable && n.sentiment === newsFilter);
 
   const assetClassCounts = countByAssetClass(newsBySentiment);
 

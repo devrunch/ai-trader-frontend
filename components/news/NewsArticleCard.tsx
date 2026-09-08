@@ -15,7 +15,20 @@ export function NewsArticleCard({ article: n }: { article: ApiNewsItem }) {
       className="block px-4 py-3.5 hover:bg-secondary/40 transition-colors">
       <div className="flex items-start justify-between gap-3 mb-1.5">
         <h3 className="text-sm font-medium leading-snug">{n.headline}</h3>
-        <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ background: col, color: "#0b0e14" }}>{n.sentiment}</span>
+        {/* An unscored article arrives as NEUTRAL/0 with sentimentAvailable
+            false. Rendering that as a plain "NEUTRAL" badge -- which this
+            did until a real HF outage made it obvious -- tells the reader
+            FinBERT read the headline as neutral, when in fact nothing
+            scored it at all. Same "unavailable is not a value" rule the
+            impacts block below already follows. */}
+        {n.sentimentAvailable ? (
+          <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ background: col, color: "#0b0e14" }}>{n.sentiment}</span>
+        ) : (
+          <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-bold uppercase border border-border text-muted-foreground"
+            title="Sentiment scoring was unavailable for this headline -- not a neutral reading">
+            Unscored
+          </span>
+        )}
       </div>
       {n.description && <p className="text-xs text-muted-foreground leading-relaxed mb-2 line-clamp-2">{n.description}</p>}
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono mb-1">
