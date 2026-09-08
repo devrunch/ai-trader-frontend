@@ -12,7 +12,7 @@
  */
 export * from "./client";
 export * from "./signals";
-export * from "./brief";
+export * from "./market-overview";
 export * from "./alerts";
 export * from "./chat";
 export * from "./charts";
