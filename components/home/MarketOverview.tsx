@@ -22,7 +22,7 @@ function CueGroup({ group, items }: { group: string; items: MarketCue[] }) {
           <div key={c.symbol} className="flex items-baseline justify-between gap-3" title={c.why}>
             <span className="text-sm">{c.name}</span>
             <span className="font-mono text-sm tabular-nums">
-              <span className="text-muted-foreground mr-2">{c.value.toLocaleString("en-IN")}</span>
+              <span className="text-muted-foreground mr-2">{c.value.toLocaleString(undefined)}</span>
               <span style={{ color: c.change_pct >= 0 ? "var(--buy)" : "var(--sell)" }}>{pct(c.change_pct)}</span>
             </span>
           </div>

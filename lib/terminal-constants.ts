@@ -1,5 +1,9 @@
 /** Exchanges the search box can jump to directly. */
-export const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE", "MCX", "FOREX"] as const;
+export const SEARCH_EXCHANGES = ["NASDAQ", "NYSE", "FOREX", "NSE", "BSE", "MCX"] as const;
+
+/** What the terminal opens on before the user picks anything. */
+export const DEFAULT_SYMBOL = "AAPL";
+export const DEFAULT_EXCHANGE = "NASDAQ";
 
 /**
  * Exchanges the paper account can actually trade on.
@@ -15,22 +19,6 @@ export const SEARCH_EXCHANGES = ["NSE", "BSE", "NASDAQ", "NYSE", "MCX", "FOREX"]
  * data cover MCX now; paper trading it is a real, separate decision.
  */
 export const TRADABLE_EXCHANGES = new Set(["NSE", "BSE"]);
-
-/**
- * Exchanges on-demand signal generation covers.
- *
- * Same two exchanges as TRADABLE_EXCHANGES today, but a separate constant on
- * purpose — this one mirrors the API's own SIGNAL_EXCHANGES (signals.controller.ts),
- * a different restriction for a different reason (its cost/risk model is
- * India-specific, not a currency-mismatch issue). If trading and signal
- * coverage ever diverge, sharing one set here would silently gate the wrong
- * feature.
- *
- * MCX deliberately NOT included yet, same reasoning as TRADABLE_EXCHANGES
- * above — AI-generated buy/sell signals for commodities need their own risk
- * model, not silently inherited from the equity one.
- */
-export const SIGNAL_EXCHANGES = new Set(["NSE", "BSE"]);
 
 /**
  * Exchanges with a real live tick feed -- Kite WebSocket for NSE/BSE/MCX,

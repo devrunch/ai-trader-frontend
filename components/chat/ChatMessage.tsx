@@ -14,7 +14,7 @@ export interface ChatMsg {
   turnId?: string;
 }
 
-const inr = (n: number) => n.toLocaleString("en-IN");
+const inr = (n: number) => n.toLocaleString(undefined);
 
 /**
  * One message in the conversation.

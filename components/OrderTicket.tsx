@@ -44,7 +44,7 @@ interface OrderTicketProps {
 }
 
 function money(n: number) {
-  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /** Explicit sign on the percentage — colour must reinforce, never carry, direction. */
@@ -326,7 +326,7 @@ export function OrderTicket({ symbol, exchange, name, ltp, changePct, prefill }:
             <span className="text-muted-foreground">
               Balance{" "}
               {cashBalance !== null ? (
-                <span className="text-foreground font-mono">₹{cashBalance.toLocaleString("en-IN")}</span>
+                <span className="text-foreground font-mono">₹{cashBalance.toLocaleString(undefined)}</span>
               ) : balanceFailed ? (
                 <button onClick={loadBalance} className="text-link hover:underline">unavailable — retry</button>
               ) : (
@@ -336,7 +336,7 @@ export function OrderTicket({ symbol, exchange, name, ltp, changePct, prefill }:
             <span className="text-muted-foreground">
               {isLimit ? "Req" : "Est"}{" "}
               <span className="font-mono" style={{ color: dir }}>
-                {orderTotal != null ? `₹${orderTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"}
+                {orderTotal != null ? `₹${orderTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}
               </span>
             </span>
           </div>
@@ -372,7 +372,7 @@ export function OrderTicket({ symbol, exchange, name, ltp, changePct, prefill }:
                 { l: "Quantity",   v: `${qtyNum} shares` },
                 { l: "Price",      v: isLimit ? `₹${price} limit` : "Market price" },
                 { l: isLimit ? "Total value" : "Estimated value",
-                  v: orderTotal != null ? `₹${orderTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—" },
+                  v: orderTotal != null ? `₹${orderTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—" },
               ].map((r) => (
                 <div key={r.l} className="flex justify-between items-center py-1.5 border-b border-border/50 last:border-0">
                   <span className="text-muted-foreground text-sm">{r.l}</span>

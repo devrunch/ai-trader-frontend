@@ -71,12 +71,6 @@ export interface ChatResponse {
 }
 export interface ChatHistoryItem { role: "user" | "assistant"; content: string }
 
-export const chatWithAI = (symbol: string, exchange: string, message: string, history: ChatHistoryItem[]) =>
-  req<ChatResponse>("/api/signals/chat", {
-    method: "POST",
-    body: JSON.stringify({ symbol, exchange, message, history }),
-  });
-
 /* ── Agent memory: what the agent did, kept ── */
 
 /** One step the agent took, as recorded during the turn. */
@@ -102,17 +96,6 @@ export interface ChatTurnRecord {
   usage?: Record<string, number>;
   stopReason?: string;
   createdAt: string;
-}
-
-export interface ChatSessionSummary {
-  sessionId: string;
-  symbol: string;
-  exchange: string;
-  turns: number;
-  startedAt: string;
-  lastTurnAt: string;
-  /** The opening question — what the conversation is recognisably about. */
-  title: string;
 }
 
 /** One backtested trade, as the backtest computed it off real bars. */
@@ -156,12 +139,6 @@ export interface StrategyRunRecord {
   label: string;
   detail: StrategyRunDetail;
 }
-
-export const getChatSessions = (limit = 30) =>
-  req<ChatSessionSummary[]>(`/api/chat/sessions?limit=${limit}`);
-
-export const getChatSession = (sessionId: string) =>
-  req<ChatTurnRecord[]>(`/api/chat/sessions/${encodeURIComponent(sessionId)}`);
 
 /** The conversation to restore when the terminal opens on a symbol. */
 export const getLatestChatForSymbol = (symbol: string) =>

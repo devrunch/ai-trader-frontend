@@ -13,7 +13,7 @@ type Tab = "Positions" | "Orders";
  *  A gain rendered "+₹1,234" and a loss "₹-1,234" — different glyph order for
  *  the same quantity, and the sign buried after the symbol. */
 function signedMoney(n: number) {
-  return `${n < 0 ? "−" : "+"}₹${Math.abs(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+  return `${n < 0 ? "−" : "+"}₹${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 function signedPct(n: number) {
   return `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(2)}%`;
@@ -76,10 +76,10 @@ export default function PortfolioPage() {
   const retUp   = (paper?.pnlPct ?? 0) >= 0;
 
   const STATS = paper ? [
-    { l: "Current value", v: `₹${paper.currentValue.toLocaleString("en-IN")}`, color: "var(--foreground)" },
+    { l: "Current value", v: `₹${paper.currentValue.toLocaleString(undefined)}`, color: "var(--foreground)" },
     { l: "Total P&L", v: signedMoney(paper.totalPnl), color: pnlUp ? "var(--buy)" : "var(--sell)" },
     { l: "Return", v: signedPct(paper.pnlPct), color: retUp ? "var(--buy)" : "var(--sell)" },
-    { l: "Invested", v: `₹${paper.totalInvested.toLocaleString("en-IN")}`, color: "var(--foreground)" },
+    { l: "Invested", v: `₹${paper.totalInvested.toLocaleString(undefined)}`, color: "var(--foreground)" },
   ] : [];
 
   return (
@@ -208,13 +208,12 @@ export default function PortfolioPage() {
                   return (
                     <div key={p._id} className={`grid grid-cols-[2fr_1fr_1fr_1fr_1.2fr] items-center px-5 py-3.5 hover:bg-secondary/40 transition-colors ${i < positions.length - 1 ? "border-b border-border" : ""}`}>
                       <div>
-                        {/* Carry the symbol through — this used to land every position on RELIANCE. */}
-                        <Link href={`/dashboard/terminal?symbol=${encodeURIComponent(p.symbol)}`} className="text-sm font-semibold hover:text-link transition-colors">{p.symbol}</Link>
+                        <Link href={`/dashboard/terminal?symbol=${encodeURIComponent(p.symbol)}&exchange=${encodeURIComponent(p.exchange)}`} className="text-sm font-semibold hover:text-link transition-colors">{p.symbol}</Link>
                         <div className="text-[10px] text-muted-foreground font-mono">{p.exchange}</div>
                       </div>
                       <div className="text-right text-sm font-mono">{p.quantity}</div>
-                      <div className="text-right text-sm font-mono">₹{p.averageCost.toLocaleString("en-IN")}</div>
-                      <div className="text-right text-sm font-mono">₹{p.currentPrice.toLocaleString("en-IN")}</div>
+                      <div className="text-right text-sm font-mono">₹{p.averageCost.toLocaleString(undefined)}</div>
+                      <div className="text-right text-sm font-mono">₹{p.currentPrice.toLocaleString(undefined)}</div>
                       <div className="text-right text-sm font-semibold font-mono" style={{ color: up ? "var(--buy)" : "var(--sell)" }}>
                         {signedMoney(p.unrealisedPnl)}
                         <div className="text-[10px] font-normal">{signedPct(pct)}</div>
@@ -256,14 +255,14 @@ export default function PortfolioPage() {
                     {/* An unfilled order has no fill price — showing ₹0 invented one. */}
                     <div className="text-right text-sm font-mono">
                       {filled
-                        ? `₹${o.executedPrice!.toLocaleString("en-IN")}`
+                        ? `₹${o.executedPrice!.toLocaleString(undefined)}`
                         : o.limitPrice != null
-                          ? <span className="text-muted-foreground">₹{o.limitPrice.toLocaleString("en-IN")} <span className="text-[9px]">limit</span></span>
+                          ? <span className="text-muted-foreground">₹{o.limitPrice.toLocaleString(undefined)} <span className="text-[9px]">limit</span></span>
                           : <span className="text-muted-foreground">—</span>}
                     </div>
                     <div className="text-right text-[10px] text-muted-foreground font-mono">
                       {o.createdAt
-                        ? new Date(o.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+                        ? new Date(o.createdAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
                         : "—"}
                     </div>
                     <div className="text-center">

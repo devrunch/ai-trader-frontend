@@ -1,12 +1,6 @@
 import { req } from "./client";
 import type { ApiPortfolio, OrderKind, PlaceOrderResponse } from "./paper";
 
-export const createPaperPortfolio = (exchange = "NSE", initialCapital = 100000) =>
-  req<ApiPortfolio>("/api/paper/portfolio", {
-    method: "POST",
-    body: JSON.stringify({ exchange, initialCapital }),
-  });
-
 /**
  * `type` is required, not optional: omitting it made the API default to MARKET
  * (`paper-trading.service.ts`), so a user who chose "Limit" silently got a

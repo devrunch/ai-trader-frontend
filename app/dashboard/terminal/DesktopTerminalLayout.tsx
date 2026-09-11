@@ -16,7 +16,6 @@ import { OrderTicket, type OrderPrefill } from "@/components/OrderTicket";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ErrorState } from "@/components/ErrorState";
 import { DrawingToolbar, type DrawTool } from "@/components/terminal/DrawingToolbar";
-import { SignalPanel, type DisplaySignal } from "@/components/terminal/SignalPanel";
 import { PositionsPanel } from "@/components/terminal/PositionsPanel";
 import { Disclaimer } from "@/components/Disclaimer";
 import { IndicatorPickerModal, type PickerEntry } from "@/components/terminal/IndicatorPickerModal";
@@ -24,7 +23,7 @@ import { IndicatorEditorModal } from "@/components/terminal/IndicatorEditorModal
 import { IndicatorSettingsModal, type IndicatorSettingsResult } from "@/components/terminal/IndicatorSettingsModal";
 import { toAttachedIndicator } from "@/lib/indicators/catalog";
 import type { AttachedIndicator } from "@/lib/api/charts";
-import { TRADABLE_EXCHANGES, SIGNAL_EXCHANGES, REALTIME_EXCHANGES, CURRENCY, MAX_WATCHLIST_SIZE } from "@/lib/terminal-constants";
+import { TRADABLE_EXCHANGES, REALTIME_EXCHANGES, CURRENCY, MAX_WATCHLIST_SIZE } from "@/lib/terminal-constants";
 import { SymbolSearchModal } from "@/components/terminal/SymbolSearchModal";
 import { IntervalPicker } from "@/components/terminal/IntervalPicker";
 import { ChartTypePicker } from "@/components/terminal/ChartTypePicker";
@@ -99,8 +98,8 @@ export interface DesktopTerminalLayoutProps {
   chartType: ChartTypeId;
   setChartType: Dispatch<SetStateAction<ChartTypeId>>;
 
-  rightTab: "chart" | "signal" | "trade" | "positions" | "chat";
-  setRightTab: Dispatch<SetStateAction<"chart" | "signal" | "trade" | "positions" | "chat">>;
+  rightTab: "chart" | "trade" | "positions" | "chat";
+  setRightTab: Dispatch<SetStateAction<"chart" | "trade" | "positions" | "chat">>;
 
   watchlist: ApiWatchlistItem[];
   watchlistLoading: boolean;
@@ -111,9 +110,6 @@ export interface DesktopTerminalLayoutProps {
   handleAddToWatchlist: () => Promise<void>;
   handleRemoveFromWatchlist: (symbol: string, exchange: string) => Promise<void>;
   suggestQuotes: Record<string, Quote>;
-
-  asking: boolean;
-  handleAskAI: () => Promise<void>;
 
   searchOpen: boolean;
   setSearchOpen: Dispatch<SetStateAction<boolean>>;
@@ -130,13 +126,7 @@ export interface DesktopTerminalLayoutProps {
   highlightedIndex: number;
   setHighlightedIndex: Dispatch<SetStateAction<number>>;
   handleSearchKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
-  selectSymbol: (sym: string, exchange?: string) => void;
-
-  displaySignal: DisplaySignal | null;
-  signalError: string;
-  signalLoading: boolean;
-  askedEmpty: boolean;
-  askError: string;
+  selectSymbol: (sym: string, exchange: string) => void;
 
   prefill: OrderPrefill | null;
   setPrefill: Dispatch<SetStateAction<OrderPrefill | null>>;
@@ -169,11 +159,9 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
     rightTab, setRightTab,
     watchlist, watchlistLoading, watchlistBusy, watchlistError, activeInWatchlist, watchlistFull,
     handleAddToWatchlist, handleRemoveFromWatchlist, suggestQuotes,
-    asking, handleAskAI,
     searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchExchange, setSearchExchange,
     resultFilter, setResultFilter, symbolMatches, searchingSymbols, filteredMatches, q,
     highlightedIndex, setHighlightedIndex, handleSearchKeyDown, selectSymbol,
-    displaySignal, signalError, signalLoading, askedEmpty, askError,
     prefill, setPrefill,
     positions, positionsLoading, positionsError, setPositionsReload,
     applyDrawings, removeTurnDrawings, applyIndicatorChanges, applyCustomIndicators,
@@ -218,7 +206,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
             </span>
           ) : (
             <>
-              <span className="font-mono text-lg font-bold ml-1">{CURRENCY[activeExchange] ?? "₹"}{ltp.toFixed(2)}</span>
+              <span className="font-mono text-lg font-bold ml-1">{CURRENCY[activeExchange] ?? ""}{ltp.toFixed(2)}</span>
               {change !== null && changePct !== null && (
                 <span className="font-mono text-xs" style={{ color: isUp ? "var(--buy)" : "var(--sell)" }}>
                   {isUp ? "+" : "−"}{Math.abs(change).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
@@ -352,16 +340,6 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
             </button>
           )
         )}
-
-        <button onClick={handleAskAI} disabled={asking || !SIGNAL_EXCHANGES.has(activeExchange)}
-          title={SIGNAL_EXCHANGES.has(activeExchange) ? undefined : "On-demand analysis is available for NSE and BSE only right now"}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-sm font-bold hover:brightness-110 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
-          {asking ? (
-            <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Analyzing…</>
-          ) : (
-            <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg> Ask AI</>
-          )}
-        </button>
       </div>
 
       {watchlistError && (
@@ -398,7 +376,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
               <p className="text-xs text-muted-foreground mt-1">Try another symbol, or check the exchange.</p>
             </div>
           ) : (
-            <CandlestickChart fill bars={bars} signal={displaySignal} livePrice={quote?.ltp}
+            <CandlestickChart fill bars={bars} signal={null} livePrice={quote?.ltp}
               chartType={chartType}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
               onLoadMore={handleLoadMore}
@@ -435,9 +413,6 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
         {/* Right panel — tabbed */}
         <div className="w-85 shrink-0 border-l border-border flex flex-col">
           <div className="flex border-b border-border shrink-0">
-            {/* Signal tab hidden -- generation was producing unreliable
-                directions and isn't wanted in the terminal right now. Left
-                in the type/state machinery below so it's a one-line revert. */}
             {([["trade", "Trade"], ["positions", "Positions"], ["chat", "Chat"]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setRightTab(k as typeof rightTab)}
                 className={`flex-1 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors ${rightTab === k ? "text-link border-primary" : "text-muted-foreground border-transparent hover:text-foreground"}`}>
@@ -447,22 +422,6 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
           </div>
 
           <div className="flex-1 overflow-y-auto no-scrollbar p-3">
-
-            {/* ── Signal ── */}
-            {rightTab === "signal" && (
-              <SignalPanel
-                symbol={activeSymbol}
-                currency={CURRENCY[activeExchange] ?? "₹"}
-                signal={displaySignal}
-                asking={asking}
-                askError={askError}
-                loadError={signalError}
-                loading={signalLoading}
-                askedEmpty={askedEmpty}
-                onDemandAvailable={SIGNAL_EXCHANGES.has(activeExchange)}
-                onUseSignal={(side, price) => { setPrefill({ side, price }); setRightTab("trade"); }}
-              />
-            )}
 
             {/* ── Trade ──
                 Always mounted, visibility toggled by class: a conditional

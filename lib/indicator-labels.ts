@@ -54,6 +54,6 @@ export function indicatorLabel(key: string): string {
 export function indicatorValue(key: string, value: number): string {
   if (key === "supertrend_dir") return value === 1 ? "Bullish" : value === -1 ? "Bearish" : "—";
   if (key === "volume_ratio") return `${value}×`;
-  if (key === "volume" || key === "volume_avg20") return value.toLocaleString("en-IN");
+  if (key === "volume" || key === "volume_avg20") return value.toLocaleString(undefined);
   return String(value);
 }

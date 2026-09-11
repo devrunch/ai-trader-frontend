@@ -57,13 +57,13 @@ export function PositionsPanel({
             <div>
               <div className="text-sm font-semibold">{p.symbol}</div>
               <div className="text-[10px] text-muted-foreground font-mono">
-                {p.quantity} @ ₹{p.averageCost.toLocaleString("en-IN")}
+                {p.quantity} @ ₹{p.averageCost.toLocaleString(undefined)}
               </div>
             </div>
             <div className="text-right font-mono">
               {/* Explicit sign: colour reinforces direction, it never carries it. */}
               <div className="text-sm font-semibold" style={{ color: colour }}>
-                {up ? "+" : "−"}₹{Math.abs(p.unrealisedPnl).toLocaleString("en-IN")}
+                {up ? "+" : "−"}₹{Math.abs(p.unrealisedPnl).toLocaleString(undefined)}
               </div>
               <div className="text-[10px]" style={{ color: colour }}>
                 {up ? "+" : "−"}{Math.abs(pct).toFixed(2)}%

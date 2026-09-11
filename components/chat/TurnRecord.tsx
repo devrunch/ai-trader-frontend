@@ -26,7 +26,7 @@ const STOP_REASONS: Record<string, string> = {
 };
 
 function stamp(iso: string): string {
-  return new Date(iso).toLocaleString("en-IN", {
+  return new Date(iso).toLocaleString(undefined, {
     day: "2-digit", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit", hour12: false,
   });
@@ -87,7 +87,7 @@ export function TurnRecord({ turn }: { turn: ChatTurnRecord }) {
       {turn.usage?.total_tokens ? (
         <p className="text-[11px] text-muted-foreground font-mono border-t border-border pt-3">
           {turn.usage.llm_calls ?? 0} model {turn.usage.llm_calls === 1 ? "call" : "calls"} ·{" "}
-          {turn.usage.total_tokens.toLocaleString("en-IN")} tokens
+          {turn.usage.total_tokens.toLocaleString(undefined)} tokens
         </p>
       ) : null}
     </div>

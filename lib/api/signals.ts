@@ -19,9 +19,6 @@ export interface ApiSignal {
 export const getSignals = (limit = 50) =>
   req<ApiSignal[]>(`/api/signals?limit=${limit}`);
 
-export const getSignalsBySymbol = (symbol: string) =>
-  req<ApiSignal[]>(`/api/signals/${symbol}`);
-
 
 /* ── Signal performance (historical backtest of stored signals) ── */
 export interface EvaluatedSignal extends ApiSignal {
@@ -67,23 +64,3 @@ export interface SignalPerformance {
 }
 export const getSignalPerformance = (limit = 40) =>
   req<SignalPerformance>(`/api/signals/performance?limit=${limit}`);
-
-/** Raw shape returned by the FastAPI on-demand generator (snake_case, not the stored Mongo shape). */
-export interface ApiGeneratedSignal {
-  symbol: string;
-  exchange: string;
-  signal_type: "BUY" | "SELL" | "HOLD";
-  confidence: number;
-  entry_price: number;
-  target_price: number;
-  stop_loss: number;
-  reasoning: string;
-  indicators: Record<string, number>;
-}
-
-/** Triggers signal generation right now instead of waiting for the 15-min screener. */
-export const generateSignal = (symbol: string, exchange = "NSE") =>
-  req<{ signal: ApiGeneratedSignal | null; message?: string }>(
-    `/api/signals/generate/${symbol}?exchange=${exchange}`,
-    { method: "POST" }
-  );

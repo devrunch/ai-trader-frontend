@@ -12,7 +12,7 @@ import {
 } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
 
-const tok = (n: number) => n.toLocaleString("en-IN");
+const tok = (n: number) => n.toLocaleString(undefined);
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "—";
@@ -21,7 +21,7 @@ function relativeTime(iso: string | null): string {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return new Date(iso).toLocaleDateString(undefined, { day: "2-digit", month: "short" });
 }
 
 /**
@@ -311,7 +311,7 @@ function RecentTurns({ userId }: { userId: string }) {
       {turns.map((t) => (
         <li key={t.turnId} className="flex items-baseline gap-3 text-[11px]">
           <span className="text-muted-foreground font-mono shrink-0 w-14">
-            {new Date(t.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+            {new Date(t.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
           </span>
           <span className="font-mono shrink-0 w-20 text-muted-foreground">{t.symbol}</span>
           <span className="min-w-0 truncate flex-1">{t.message}</span>

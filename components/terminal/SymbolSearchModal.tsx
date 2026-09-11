@@ -29,7 +29,7 @@ export function SymbolSearchModal({
   searchingSymbols: boolean;
   symbolMatches: SymbolMatch[];
   filteredMatches: SymbolMatch[];
-  selectSymbol: (sym: string, exchange?: string) => void;
+  selectSymbol: (sym: string, exchange: string) => void;
   highlightedIndex: number;
   setHighlightedIndex: Dispatch<SetStateAction<number>>;
   searchExchange: string;

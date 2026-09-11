@@ -6,7 +6,7 @@ export type AssetClassFilter = "All" | NewsAssetClass;
  *  this app's own real exchange set (see ai-trader-api's market.controller.ts
  *  EXCHANGES) plus CRYPTO/OTHER, so the filter row's shape doesn't jump
  *  around as headlines come and go. */
-export const ASSET_CLASSES: NewsAssetClass[] = ["NSE", "BSE", "NASDAQ", "NYSE", "FOREX", "MCX", "CRYPTO", "OTHER"];
+export const ASSET_CLASSES: NewsAssetClass[] = ["NASDAQ", "NYSE", "FOREX", "CRYPTO", "NSE", "BSE", "MCX", "OTHER"];
 
 /** Divides today's impacts by market/asset class -- NSE, BSE, NASDAQ, NYSE,
  *  FOREX, MCX, plus CRYPTO (informational; this app has no crypto trading

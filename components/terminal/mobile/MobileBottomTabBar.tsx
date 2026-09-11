@@ -1,10 +1,7 @@
 "use client";
 
-type Tab = "chart" | "signal" | "trade" | "positions" | "chat";
+type Tab = "chart" | "trade" | "positions" | "chat";
 
-// Signal tab hidden -- generation was producing unreliable directions and
-// isn't wanted right now. `signal` stays in the Tab union (page.tsx state
-// machinery still uses it) so this is a one-line revert.
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "chart", label: "Chart", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg> },
   { key: "trade", label: "Trade", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18" /><path d="M18 9l-5 5-4-4-4 4" /></svg> },

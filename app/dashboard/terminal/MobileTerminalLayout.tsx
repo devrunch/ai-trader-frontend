@@ -7,7 +7,6 @@ import { CandlestickChart } from "@/components/CandlestickChart";
 import { ErrorState } from "@/components/ErrorState";
 import { OrderTicket } from "@/components/OrderTicket";
 import { ChatPanel } from "@/components/chat/ChatPanel";
-import { SignalPanel } from "@/components/terminal/SignalPanel";
 import { PositionsPanel } from "@/components/terminal/PositionsPanel";
 import { Disclaimer } from "@/components/Disclaimer";
 import { IndicatorPickerModal } from "@/components/terminal/IndicatorPickerModal";
@@ -16,13 +15,13 @@ import { IndicatorSettingsModal } from "@/components/terminal/IndicatorSettingsM
 import { SymbolSearchModal } from "@/components/terminal/SymbolSearchModal";
 import { toAttachedIndicator } from "@/lib/indicators/catalog";
 import { deleteIndicator } from "@/lib/api";
-import { TRADABLE_EXCHANGES, SIGNAL_EXCHANGES, CURRENCY } from "@/lib/terminal-constants";
+import { TRADABLE_EXCHANGES, CURRENCY } from "@/lib/terminal-constants";
 
 /** Mobile's own chrome around the same chart/panels DesktopTerminalLayout
  *  uses -- the Chart destination stays mounted (CSS-hidden, not unmounted)
  *  when another bottom tab is active, same "always mounted" reasoning
  *  OrderTicket already relies on, so pan/zoom/in-progress drawings survive
- *  a trip to Chat and back. Signal/Trade/Positions/Chat keep whatever mount
+ *  a trip to Chat and back. Trade/Positions/Chat keep whatever mount
  *  policy they already have in DesktopTerminalLayout -- this file does not
  *  invent a new one per component. */
 export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
@@ -39,7 +38,6 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
     candleInterval, setCandleInterval,
     chartType, setChartType,
     rightTab, setRightTab,
-    displaySignal, signalError, signalLoading, askedEmpty, askError, asking, handleAskAI,
     prefill, setPrefill,
     positions, positionsLoading, positionsError, setPositionsReload, selectSymbol,
     applyDrawings, removeTurnDrawings, applyIndicatorChanges, applyCustomIndicators,
@@ -57,7 +55,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
       <div className={rightTab === "chart" ? "flex-1 flex flex-col min-h-0" : "hidden"}>
         <MobileChartToolbar
           symbol={activeSymbol} exchange={activeExchange}
-          currency={CURRENCY[activeExchange] ?? "₹"}
+          currency={CURRENCY[activeExchange] ?? ""}
           ltp={ltp}
           onOpenSearch={() => setSearchOpen(true)}
           activeTool={activeTool} onPickTool={pickTool}
@@ -82,7 +80,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
               <p className="text-xs text-muted-foreground mt-1">Try another symbol, or check the exchange.</p>
             </div>
           ) : (
-            <CandlestickChart fill bars={bars} signal={displaySignal} livePrice={quote?.ltp}
+            <CandlestickChart fill bars={bars} signal={null} livePrice={quote?.ltp}
               chartType={chartType}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
               onLoadMore={handleLoadMore}
@@ -117,36 +115,10 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
         </div>
       </div>
 
-      {/* Signal / Trade / Positions / Chat -- full-screen destinations,
-          each keeping its own mount policy from DesktopTerminalLayout. */}
+      {/* Trade / Positions / Chat -- full-screen destinations, each keeping
+          its own mount policy from DesktopTerminalLayout. */}
       {rightTab !== "chart" && (
         <div className="flex-1 min-h-0 overflow-y-auto p-3">
-          {rightTab === "signal" && (
-            <>
-            <button onClick={handleAskAI} disabled={asking || !SIGNAL_EXCHANGES.has(activeExchange)}
-              title={SIGNAL_EXCHANGES.has(activeExchange) ? undefined : "On-demand analysis is available for NSE and BSE only right now"}
-              className="w-full mb-3 flex items-center justify-center gap-1.5 px-3.5 py-2 bg-primary text-primary-foreground text-sm font-bold hover:brightness-110 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
-              {asking ? (
-                <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Analyzing…</>
-              ) : (
-                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg> Ask AI</>
-              )}
-            </button>
-            <SignalPanel
-              symbol={activeSymbol}
-              currency={CURRENCY[activeExchange] ?? "₹"}
-              signal={displaySignal}
-              asking={asking}
-              askError={askError}
-              loadError={signalError}
-              loading={signalLoading}
-              askedEmpty={askedEmpty}
-              onDemandAvailable={SIGNAL_EXCHANGES.has(activeExchange)}
-              onUseSignal={(side, price) => { setPrefill({ side, price }); setRightTab("trade"); }}
-            />
-            </>
-          )}
-
           <div className={rightTab === "trade" ? "" : "hidden"}>
             {TRADABLE_EXCHANGES.has(activeExchange) ? (
               <OrderTicket symbol={activeSymbol} exchange={activeExchange} name={activeSymbol}

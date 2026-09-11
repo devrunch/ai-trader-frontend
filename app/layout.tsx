@@ -33,14 +33,14 @@ export const metadata: Metadata = {
   // A template, so every route can name itself. The whole app previously
   // shared one title, which made browser tabs and shared links indistinguishable.
   title: {
-    default: "AITrader — AI market analysis and paper trading for NSE & BSE",
+    default: "AITrader — AI market analysis, charts and paper trading",
     template: "%s · AITrader",
   },
   // Describes what the product does, not what it might earn. It analyses and
   // paper trades; it does not connect to a broker, and its measured accuracy is
   // published rather than claimed.
   description:
-    "AI analysis of Indian equities with live technical indicators and news sentiment, plus paper trading with a measured, published track record. Analysis, not investment advice.",
+    "AI analysis of US stocks, forex, metals and Indian markets with live technical indicators and news impact, plus paper trading. Analysis, not investment advice.",
 };
 
 export default function RootLayout({

@@ -6,8 +6,6 @@ import {
   getTickVolume,
   getTicks,
   getQuote,
-  getSignalsBySymbol,
-  generateSignal,
   getWatchlist,
   addToWatchlist,
   removeFromWatchlist,
@@ -16,8 +14,6 @@ import {
   errorMessage,
   getIndicators,
   type ApiOhlcBar,
-  type ApiSignal,
-  type ApiGeneratedSignal,
   type ApiWatchlistItem,
   type ApiPosition,
   type ApiIndicator,
@@ -38,18 +34,16 @@ import { useIsMobile } from "@/lib/use-is-mobile";
 import { DesktopTerminalLayout, type DesktopTerminalLayoutProps } from "./DesktopTerminalLayout";
 import { MobileTerminalLayout } from "./MobileTerminalLayout";
 import { useChartStateSync } from "@/lib/use-chart-state-sync";
-import { useMarketStatus } from "@/lib/market-status";
 import type { LegendItem } from "@/components/CandlestickChart";
 import type { ChartAdapter, ChartTypeId } from "@/lib/chart-adapter/types";
 import type { OrderPrefill } from "@/components/OrderTicket";
 import type { DrawTool } from "@/components/terminal/DrawingToolbar";
-import type { DisplaySignal } from "@/components/terminal/SignalPanel";
 import type { PickerEntry } from "@/components/terminal/IndicatorPickerModal";
 import type { IndicatorSettingsResult } from "@/components/terminal/IndicatorSettingsModal";
 import { SPECIAL_INDICATORS, VOLUME_PROFILE_MODE_BY_ID, INDICATOR_NAME_BY_ID } from "@/lib/indicators/catalog";
 import { VSA_LEGEND } from "@/lib/chart-adapter/vsa-colors";
 import type { AttachedIndicator } from "@/lib/api/charts";
-import { SIGNAL_EXCHANGES, MAX_WATCHLIST_SIZE } from "@/lib/terminal-constants";
+import { MAX_WATCHLIST_SIZE, DEFAULT_SYMBOL, DEFAULT_EXCHANGE } from "@/lib/terminal-constants";
 
 /**
  * What a chart shows before anyone touches it, and what Reset returns it to:
@@ -61,38 +55,15 @@ import { SIGNAL_EXCHANGES, MAX_WATCHLIST_SIZE } from "@/lib/terminal-constants";
  */
 const DEFAULT_INDICATORS: AttachedIndicator[] = [];
 
-function fromApiSignal(s: ApiSignal): DisplaySignal {
-  return {
-    direction: s.direction, confidence: s.confidence,
-    entryPrice: s.entryPrice, targetPrice: s.targetPrice, stopLoss: s.stopLoss,
-    reasoning: s.reasoning, indicators: s.indicators,
-    generatedAt: s.generatedAt ?? s.createdAt ?? null,
-  };
-}
-
-function fromGenerated(s: ApiGeneratedSignal): DisplaySignal {
-  return {
-    direction: s.signal_type, confidence: s.confidence,
-    entryPrice: s.entry_price, targetPrice: s.target_price, stopLoss: s.stop_loss,
-    reasoning: s.reasoning, indicators: s.indicators,
-    generatedAt: new Date().toISOString(),
-  };
-}
-
 
 export default function TerminalPage() {
-  // ?symbol=XYZ lets the Brief hand a candidate straight to the Terminal --
-  // also the only thing a reload has to recover the user's own last pick
-  // from, so selectSymbol() below keeps this in sync on every change.
-  // Reading window.location during the initializer diverges from the server
-  // render (window doesn't exist there, so it always renders "RELIANCE"/"NSE")
-  // -- confirmed by hand as a real hydration-mismatch error whenever the URL
-  // named any other symbol. Starting from the same fixed default on both
-  // sides and correcting from the URL in an effect (client-only, runs after
-  // hydration) is the standard fix; it costs one frame at the default symbol
-  // before the real one takes over.
-  const [activeSymbol, setActiveSymbol]     = useState("RELIANCE");
-  const [activeExchange, setActiveExchange] = useState("NSE");
+  // ?symbol=XYZ&exchange=ABC opens a symbol directly, and is what a reload
+  // recovers the user's last pick from -- selectSymbol() below keeps it in
+  // sync. Start from the fixed default on both server and client, then
+  // correct from the URL after hydration; reading window.location in the
+  // initializer causes a hydration mismatch.
+  const [activeSymbol, setActiveSymbol]     = useState(DEFAULT_SYMBOL);
+  const [activeExchange, setActiveExchange] = useState(DEFAULT_EXCHANGE);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get("symbol");
@@ -143,22 +114,13 @@ export default function TerminalPage() {
   const [watchlistBusy, setWatchlistBusy]   = useState(false);
   const [watchlistError, setWatchlistError] = useState("");
 
-  const [displaySignal, setDisplaySignal] = useState<DisplaySignal | null>(null);
-  const [signalLoading, setSignalLoading] = useState(true);
-  const [signalError, setSignalError]     = useState("");
   const [positionsError, setPositionsError] = useState("");
   const [positionsReload, setPositionsReload] = useState(0);
-
-  /* One shared market-status poll, from the dashboard layout. */
-  const { phase: marketPhase } = useMarketStatus();
-  const [asking, setAsking]               = useState(false);
-  const [askedEmpty, setAskedEmpty]       = useState(false);
-  const [askError, setAskError]           = useState("");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen]   = useState(false);
   /** Which exchange "Load anyway" jumps to when no live match covers it. */
-  const [searchExchange, setSearchExchange] = useState<string>("NSE");
+  const [searchExchange, setSearchExchange] = useState<string>(DEFAULT_EXCHANGE);
   /** Which exchange the results list is filtered to -- a different job from
    *  searchExchange above (that one only steers the raw-symbol fallback
    *  row), "ALL" shows every match across every exchange one search call
@@ -441,9 +403,7 @@ export default function TerminalPage() {
     });
   }
 
-  // Was "signal" -- that tab is hidden now (unreliable directions), so
-  // opening on it would land on a panel with no button to leave it from.
-  const [rightTab, setRightTab] = useState<"chart" | "signal" | "trade" | "positions" | "chat">("trade");
+  const [rightTab, setRightTab] = useState<"chart" | "trade" | "positions" | "chat">("trade");
   const [positions, setPositions] = useState<ApiPosition[]>([]);
   /* Derived below from (rightTab, positionsLoaded) — holding it in state meant
      setting it synchronously inside an effect, which cascades a render. */
@@ -657,17 +617,6 @@ export default function TerminalPage() {
     return getTicks(activeSymbol, sinceSec, untilSec).then((r) => r.ticks).catch(() => null);
   }, [activeSymbol]);
 
-  /* Existing stored signal (background, doesn't force a fresh LLM call) */
-  useEffect(() => {
-    getSignalsBySymbol(activeSymbol)
-      .then(sigs => {
-        setDisplaySignal(sigs[0] ? fromApiSignal(sigs[0]) : null);
-        setSignalError("");
-      })
-      .catch(e => { setDisplaySignal(null); setSignalError(errorMessage(e, "Couldn't check for an existing signal.")); })
-      .finally(() => setSignalLoading(false));
-  }, [activeSymbol]);
-
   /* Load running positions when that tab is open */
   useEffect(() => {
     if (rightTab !== "positions") return;
@@ -683,37 +632,14 @@ export default function TerminalPage() {
   // screen while the refetch runs, which is less jarring than a flash of skeleton.
   const positionsLoading = rightTab === "positions" && !positionsLoaded;
 
-  async function handleAskAI() {
-    // The button is disabled for these exchanges too — this guards a
-    // fast-second-click or any other path that reaches the handler directly.
-    if (!SIGNAL_EXCHANGES.has(activeExchange)) return;
-    setAsking(true);
-    setAskError("");
-    setAskedEmpty(false);
-    try {
-      const res = await generateSignal(activeSymbol, activeExchange);
-      if (res.signal) {
-        setDisplaySignal(fromGenerated(res.signal));
-      } else {
-        setDisplaySignal(null);
-        setAskedEmpty(true);
-      }
-    } catch (err) {
-      setAskError(err instanceof Error ? err.message : "Analysis failed — try again");
-    } finally {
-      setAsking(false);
-    }
-  }
-
-  function selectSymbol(sym: string, exchange = "NSE") {
+  function selectSymbol(sym: string, exchange: string) {
     const symbol = sym.toUpperCase();
     const exch = exchange.toUpperCase();
     setActiveSymbol(symbol);
     setActiveExchange(exch);
     setSearchQuery("");
     setSearchOpen(false);
-    // Keeps the URL in sync so a reload restores this pick instead of
-    // silently falling back to the RELIANCE/NSE default above.
+    // Keeps the URL in sync so a reload restores this pick.
     const url = new URL(window.location.href);
     url.searchParams.set("symbol", symbol);
     url.searchParams.set("exchange", exch);
@@ -831,11 +757,9 @@ export default function TerminalPage() {
     rightTab, setRightTab,
     watchlist, watchlistLoading, watchlistBusy, watchlistError, activeInWatchlist, watchlistFull,
     handleAddToWatchlist, handleRemoveFromWatchlist, suggestQuotes,
-    asking, handleAskAI,
     searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchExchange, setSearchExchange,
     resultFilter, setResultFilter, symbolMatches, searchingSymbols, filteredMatches, q,
     highlightedIndex, setHighlightedIndex, handleSearchKeyDown, selectSymbol,
-    displaySignal, signalError, signalLoading, askedEmpty, askError,
     prefill, setPrefill,
     positions, positionsLoading, positionsError, setPositionsReload,
     applyDrawings, removeTurnDrawings, applyIndicatorChanges, applyCustomIndicators,

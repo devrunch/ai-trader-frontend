@@ -23,7 +23,7 @@ function ago(iso: string): string {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return new Date(iso).toLocaleDateString(undefined, { day: "2-digit", month: "short" });
 }
 
 export function StrategyRunCard({ run }: { run: StrategyRunRecord }) {

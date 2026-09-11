@@ -25,8 +25,10 @@ const KIND_LABEL: Record<string, string> = {
   series: "Indicator line",
 };
 
+// No currency symbol -- a level is in the instrument's own quote currency,
+// same as the chart's price axis.
 const money = (n: number) =>
-  `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 interface Row {
   colour: string;

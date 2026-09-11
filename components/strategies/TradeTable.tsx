@@ -19,12 +19,13 @@ const REASONS: Record<string, string> = {
 
 function when(ms: number | null | undefined): string {
   if (!ms) return "—";
-  return new Date(ms).toLocaleString("en-IN", {
+  return new Date(ms).toLocaleString(undefined, {
     day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
   });
 }
 
-const rupees = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Prices in the instrument's own quote currency, so no symbol.
+const price = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function TradeTable({ trades }: { trades: StrategyTrade[] }) {
   if (trades.length === 0) {
@@ -57,10 +58,10 @@ export function TradeTable({ trades }: { trades: StrategyTrade[] }) {
             return (
               <tr key={`${t.entry_ts}-${i}`} className="border-t border-border">
                 <td className="py-1.5 pr-3 whitespace-nowrap">{when(t.entry_ts)}</td>
-                <td className="py-1.5 pr-3 text-right">{rupees(t.entry_price)}</td>
+                <td className="py-1.5 pr-3 text-right">{price(t.entry_price)}</td>
                 <td className="py-1.5 pr-3 whitespace-nowrap">{when(t.exit_ts)}</td>
                 <td className="py-1.5 pr-3 text-right">
-                  {t.exit_price != null ? rupees(t.exit_price) : "—"}
+                  {t.exit_price != null ? price(t.exit_price) : "—"}
                 </td>
                 <td className="py-1.5 pr-3 font-sans whitespace-nowrap">
                   {REASONS[t.exit_reason ?? ""] ?? t.exit_reason ?? "—"}

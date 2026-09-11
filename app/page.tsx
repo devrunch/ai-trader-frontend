@@ -35,7 +35,7 @@ function Reveal({ children, delay = 0, className = "" }: { children: React.React
 
 /* ─── Ambient ticker strip — decorative motion, not a data claim ─── */
 const TICKER = [
-  "NIFTY 50", "SENSEX", "BANKNIFTY", "NIFTY IT", "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN", "ITC",
+  "AAPL", "NVDA", "MSFT", "EURUSD", "XAUUSD", "TSLA", "GBPUSD", "JPM", "USDJPY", "RELIANCE", "AMZN", "CRUDEOIL",
 ];
 function TickerStrip() {
   return (
@@ -64,7 +64,7 @@ interface DemoStock {
 
 const DEMO_STOCKS: DemoStock[] = [
   {
-    symbol: "RELIANCE", exchange: "NSE",
+    symbol: "AAPL", exchange: "NASDAQ",
     checks: [
       { label: "RSI (14)", value: "34.2 · oversold" },
       { label: "MACD", value: "bullish crossover" },
@@ -72,23 +72,23 @@ const DEMO_STOCKS: DemoStock[] = [
       { label: "VWAP", value: "price reclaimed" },
       { label: "News sentiment", value: "positive · 12 headlines" },
     ],
-    direction: "BUY", confidence: 78, entry: "₹2,847", target: "₹2,910", stop: "₹2,800",
+    direction: "BUY", confidence: 78, entry: "$228.40", target: "$233.10", stop: "$225.60",
     reasoning: "RSI reclaimed from oversold as EMA20 was reclaimed and SuperTrend flipped bullish — momentum favors continuation toward target.",
   },
   {
-    symbol: "TCS", exchange: "NSE",
+    symbol: "EURUSD", exchange: "FOREX",
     checks: [
       { label: "RSI (14)", value: "54.0 · neutral" },
       { label: "MACD", value: "positive, widening" },
       { label: "SuperTrend", value: "bullish" },
-      { label: "VWAP", value: "trading above" },
+      { label: "EMA 50", value: "trading above" },
       { label: "News sentiment", value: "neutral · 8 headlines" },
     ],
-    direction: "BUY", confidence: 71, entry: "₹4,222", target: "₹4,255", stop: "₹4,205",
-    reasoning: "Price is above all key EMAs and VWAP with a bullish SuperTrend — consolidation near highs suggests a breakout toward the target zone.",
+    direction: "BUY", confidence: 71, entry: "1.0842", target: "1.0890", stop: "1.0815",
+    reasoning: "Price is above all key EMAs with a bullish SuperTrend — consolidation near highs ahead of US inflation data suggests a breakout toward the target zone.",
   },
   {
-    symbol: "INFY", exchange: "NSE",
+    symbol: "NVDA", exchange: "NASDAQ",
     checks: [
       { label: "RSI (14)", value: "71.4 · overbought" },
       { label: "MACD", value: "bearish divergence" },
@@ -96,12 +96,11 @@ const DEMO_STOCKS: DemoStock[] = [
       { label: "VWAP", value: "price rejected" },
       { label: "News sentiment", value: "negative · 5 headlines" },
     ],
-    direction: "SELL", confidence: 68, entry: "₹1,892", target: "₹1,850", stop: "₹1,920",
+    direction: "SELL", confidence: 68, entry: "$131.20", target: "$127.50", stop: "$133.40",
     reasoning: "Shooting star at resistance with RSI overbought at 71 — SuperTrend flip and negative sentiment support a reversal toward the target.",
   },
   {
-    // Was AAPL/NASDAQ, which advertised a market the product cannot select.
-    symbol: "HDFCBANK", exchange: "NSE",
+    symbol: "RELIANCE", exchange: "NSE",
     checks: [
       { label: "RSI (14)", value: "41.8 · neutral" },
       { label: "MACD", value: "bullish crossover" },
@@ -109,7 +108,7 @@ const DEMO_STOCKS: DemoStock[] = [
       { label: "VWAP", value: "price reclaimed" },
       { label: "News sentiment", value: "positive · 14 headlines" },
     ],
-    direction: "BUY", confidence: 74, entry: "₹1,642", target: "₹1,678", stop: "₹1,624",
+    direction: "BUY", confidence: 74, entry: "₹2,847", target: "₹2,910", stop: "₹2,800",
     reasoning: "Price reclaimed VWAP with a fresh MACD crossover and bullish SuperTrend — momentum and sentiment both support continuation.",
   },
 ];
@@ -316,7 +315,7 @@ function LiveChartDemo() {
   return (
     <div className="border border-border bg-card p-4">
       <div className="flex items-center justify-between mb-3">
-        <span className="font-mono text-xs text-muted-foreground">DEMO · NSE · 15m</span>
+        <span className="font-mono text-xs text-muted-foreground">DEMO · 15m</span>
         <button
           onClick={askAI}
           disabled={asking}
@@ -353,25 +352,25 @@ const FEATURES = [
   { iconKey: "ai",     title: "Reasoning, not just a signal",   desc: "Every BUY/SELL comes with a plain-English explanation of what moved the AI's call — not a black-box score." },
   { iconKey: "news",   title: "News sentiment, scored",         desc: "A finance-tuned model scores recent headlines for every symbol, feeding real sentiment into every read." },
   { iconKey: "chart",  title: "Real technical indicators",      desc: "RSI, MACD, EMA cross, SuperTrend, ADX, VWAP — computed live from actual price history, not estimated." },
-  { iconKey: "search", title: "Any symbol, on demand",          desc: "Search any NSE, BSE, or US stock and ask for a live read right now — don't wait for a scheduled scan." },
+  { iconKey: "search", title: "Any symbol, on demand",          desc: "Search US stocks, forex, metals or Indian equities and ask for a live read right now — don't wait for a scheduled scan." },
   { iconKey: "paper",  title: "Paper trade first",              desc: "Every signal can be paper-traded instantly with a real cash balance and P&L — zero capital at risk." },
-  { iconKey: "globe",  title: "Built for Indian markets first", desc: "NSE and BSE timing, ₹-denominated positions, and Nifty/Sensex context, with global stocks supported too." },
+  { iconKey: "globe",  title: "Every market in one terminal",   desc: "US stocks, forex, metals and Indian equities side by side, with news impact sorted by asset class." },
 ];
 
-// Only what a user can actually select. There is no UI control anywhere that
-// sets a non-NSE/BSE exchange, so advertising US markets was a promise the
-// product could not keep the moment someone tried it.
+// Only what a user can actually chart in the terminal (crypto appears in
+// news impact only).
 const MARKETS = [
-  { label: "NSE", sample: "RELIANCE, TCS, INFY" },
-  { label: "BSE", sample: "SENSEX-listed equities" },
-  { label: "US & forex", sample: "planned, not live" },
+  { label: "US stocks", sample: "NASDAQ · NYSE" },
+  { label: "Forex & metals", sample: "EURUSD, XAUUSD" },
+  { label: "India", sample: "NSE · BSE · MCX" },
+  { label: "Crypto", sample: "news impact only" },
 ];
 
 const FAQS = [
   { q: "Is this financial advice?", a: "No. Every signal is a research read, not a recommendation — the reasoning is shown so you can judge it yourself, and paper trading exists specifically so you can test an idea before risking anything." },
   { q: "What data actually powers a signal?", a: "Real technical indicators computed from live price history (RSI, MACD, EMA, SuperTrend, ADX, VWAP), a finance-tuned model scoring recent news sentiment, and an LLM that writes the reasoning — no fabricated scores." },
   { q: "Do I need a broker account to start?", a: "No. Paper trading works immediately with no broker connection, no KYC, and no credit card. It's a real cash balance and real P&L tracking, just not real money." },
-  { q: "Which markets are supported right now?", a: "NSE and BSE for Indian equities. US markets, forex and crypto are planned but not live yet." },
+  { q: "Which markets are supported right now?", a: "US stocks (NASDAQ, NYSE), forex and metals, and Indian markets (NSE, BSE, MCX) can all be charted and analysed. US prices are delayed about 15 minutes; forex and Indian prices are live. Paper trading is NSE and BSE only for now, because the paper account is in rupees. Crypto shows up in news impact but can't be charted yet." },
   { q: "How long does a signal take to generate?", a: "An on-demand read typically takes 5–15 seconds — it's a live analysis, not a cached answer." },
 ];
 
@@ -445,7 +444,7 @@ export default function LandingPage() {
                 <Button asChild size="lg" variant="outline"><Link href="/login">Sign in</Link></Button>
               </div>
               <div className="flex flex-wrap gap-5 text-sm text-muted-foreground">
-                {["No credit card required", "Paper trading — zero risk", "NSE & BSE equities"].map(t => (
+                {["No credit card required", "Paper trading — zero risk", "US stocks, forex & India"].map(t => (
                   <div key={t} className="flex items-center gap-1.5">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--buy)" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                     {t}
@@ -515,7 +514,7 @@ export default function LandingPage() {
         <div className="max-w-300 mx-auto px-6 sm:px-10 py-20">
           <Reveal className="text-center mb-10">
             <p className="font-mono text-xs uppercase tracking-widest text-link mb-3">Where it works</p>
-            <h2 className="font-heading text-3xl font-semibold tracking-tight text-balance">India first. Global stocks too.</h2>
+            <h2 className="font-heading text-3xl font-semibold tracking-tight text-balance">One terminal for the markets you trade.</h2>
           </Reveal>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border border border-border">
             {MARKETS.map((m, i) => (
@@ -572,7 +571,7 @@ export default function LandingPage() {
                 <div className="w-7 h-7 bg-primary flex items-center justify-center text-primary-foreground font-bold text-xs">AI</div>
                 <span className="font-semibold">AI<span className="text-link">Trader</span></span>
               </div>
-              <p className="text-muted-foreground text-sm leading-relaxed max-w-xs">On-demand AI signals and paper trading for Indian and global equities.</p>
+              <p className="text-muted-foreground text-sm leading-relaxed max-w-xs">AI market analysis, charts and paper trading across US stocks, forex, metals and Indian markets.</p>
             </div>
             {[
               { heading: "Product", links: [["Try it", "#hero"], ["See the speed", "#compare"], ["FAQ", "#faq"], ["Dashboard", "/dashboard"]] },
@@ -591,7 +590,7 @@ export default function LandingPage() {
           <Separator className="mb-6" />
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-muted-foreground text-xs">© 2026 AITrader. Signals are not financial advice. Paper trading only.</p>
-            <p className="text-muted-foreground text-xs">NSE · BSE · US Equities</p>
+            <p className="text-muted-foreground text-xs">US Equities · Forex · Metals · NSE · BSE · MCX</p>
           </div>
         </div>
       </footer>

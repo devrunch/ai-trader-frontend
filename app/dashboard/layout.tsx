@@ -3,120 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
-import { MarketStatusProvider, useMarketStatus, nextOpenLabel } from "@/lib/market-status";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { API_BASE_URL } from "@/lib/api/client";
 import { AlertsBell } from "@/components/AlertsBell";
 
 const TABS = [
-  // Was "Brief" -- the old macro-cues-plus-candidates page rarely had
-  // anything to show. Repurposed (same href, so it keeps its place as the
-  // off-hours landing page) into a real homepage: top-impact news.
   { href: "/dashboard/brief",     label: "Home"      },
   { href: "/dashboard/terminal",  label: "Terminal"  },
-  // Signals tab hidden -- generation was producing unreliable directions,
-  // not wanted right now. Route/backend untouched, so this is reversible;
-  // see app/dashboard/signals/page.tsx.
-  // Backtests used to exist only inside the chat message that produced them —
-  // scroll past it and the run was gone.
+  // Signals tab hidden while signal generation is unreliable; the route
+  // still exists (app/dashboard/signals/page.tsx).
   { href: "/dashboard/strategies", label: "Strategies" },
   { href: "/dashboard/portfolio", label: "Portfolio" },
 ];
 
-function fmt(n: number | null | undefined) {
-  if (n == null) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-}
-
-const PHASE_LABEL = {
-  OPEN:       { text: "OPEN",       colour: "var(--buy)" },
-  SQUARE_OFF: { text: "SQUARE-OFF", colour: "#e0ab4a" },
-  HOLIDAY:    { text: "HOLIDAY",    colour: "var(--muted-foreground)" },
-  CLOSED:     { text: "CLOSED",     colour: "var(--muted-foreground)" },
-} as const;
-
-/**
- * Session state and the two index quotes.
- *
- * Deliberately not inside `hidden md:flex` any more: the OPEN/CLOSED chip was
- * the only session indicator in the product and it vanished below 768px.
- */
-function MarketPulse() {
-  const { status, phase, failed } = useMarketStatus();
-  const nifty  = status?.nifty50;
-  const sensex = status?.sensex;
-  const reopens = nextOpenLabel(status);
-
-  return (
-    <div className="flex items-center gap-3 sm:gap-4 font-mono text-xs min-w-0">
-      <div className="hidden md:flex items-center gap-4">
-        {[
-          { name: "NIFTY", ltp: nifty?.ltp, pct: nifty?.change_percent },
-          { name: "SENSEX", ltp: sensex?.ltp, pct: sensex?.change_percent },
-        ].map(idx => {
-          const up = (idx.pct ?? 0) >= 0;
-          return (
-            <div key={idx.name} className="flex items-center gap-1.5">
-              <span className="text-muted-foreground">{idx.name}</span>
-              <span className="text-foreground">{idx.ltp != null ? fmt(idx.ltp) : "—"}</span>
-              {idx.pct != null && (
-                <span style={{ color: up ? "var(--buy)" : "var(--sell)" }}>
-                  {up ? "+" : "−"}{Math.abs(idx.pct).toFixed(2)}%
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Persistent session indicator — shown at every width. */}
-      {failed ? (
-        <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold"
-          style={{ background: "color-mix(in oklch, var(--sell) 12%, transparent)", color: "var(--sell)" }}
-          title="Couldn't reach the market status service">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--sell)" }} />
-          STATUS UNAVAILABLE
-        </span>
-      ) : phase ? (
-        <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold shrink-0"
-          style={{
-            background: phase === "OPEN" ? "color-mix(in oklch, var(--buy) 15%, transparent)" : "var(--secondary)",
-            color: PHASE_LABEL[phase].colour,
-          }}
-          title={phase !== "OPEN" && reopens ? `Reopens ${reopens}` : undefined}>
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: PHASE_LABEL[phase].colour }} />
-          {PHASE_LABEL[phase].text}
-          {phase !== "OPEN" && reopens && (
-            <span className="hidden lg:inline text-muted-foreground font-normal">· reopens {reopens}</span>
-          )}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-/** The signals service told us a data source failed. Say so rather than
- *  presenting the last good value as current. */
-function DegradedBanner() {
-  const { status } = useMarketStatus();
-  if (!status?.degraded) return null;
-  return (
-    <div role="status" className="px-4 sm:px-8 py-1.5 text-[11px] border-b border-border shrink-0"
-      style={{ background: "color-mix(in oklch, #e0ab4a 10%, transparent)", color: "#e0ab4a" }}>
-      Some market data didn&apos;t arrive. Prices and index levels shown may be out of date.
-    </div>
-  );
-}
-
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <MarketStatusProvider>
-      <DashboardChrome>{children}</DashboardChrome>
-    </MarketStatusProvider>
-  );
-}
-
-function DashboardChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -173,8 +73,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
             const active = pathname.startsWith(href);
             return (
               <Link key={href} href={href}
-                // Remember an explicit choice so the time-aware landing at
-                // /dashboard doesn't override where the user wanted to be.
+                // /dashboard reopens the last tab the user picked.
                 onClick={() => sessionStorage.setItem("lastDashboardTab", href)}
                 className={`px-3.5 py-1.5 text-sm font-medium transition-colors ${
                   active ? "text-foreground bg-secondary" : "text-muted-foreground hover:text-foreground"
@@ -214,7 +113,6 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
 
         <div className="flex-1" />
 
-        <MarketPulse />
         <AlertsBell />
 
         {/* Avatar menu */}
@@ -247,8 +145,6 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </header>
-
-      <DegradedBanner />
 
       {/* ── Content ── */}
       <main className="flex-1 min-h-0 overflow-hidden">

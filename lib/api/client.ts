@@ -3,7 +3,7 @@
 /** The API's own origin — shared so every caller (fetch, SSE, the live-quote socket) targets the same host. */
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-/** Default per-request budget. The chat route is allowed longer (see chatWithAI). */
+/** Default per-request budget. */
 const DEFAULT_TIMEOUT_MS = 20_000;
 
 /**

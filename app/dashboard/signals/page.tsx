@@ -5,7 +5,6 @@ import Link from "next/link";
 import { indicatorLabel, indicatorValue } from "@/lib/indicator-labels";
 import { errorMessage, getSignals, getMarketNews, getSignalPerformance, MIN_BUCKET_SAMPLE,
   type ApiSignal, type ApiNewsItem, type SignalPerformance } from "@/lib/api";
-import { useMarketStatus } from "@/lib/market-status";
 import { Disclaimer } from "@/components/Disclaimer";
 import { ErrorState } from "@/components/ErrorState";
 import { NewsArticleCard } from "@/components/news/NewsArticleCard";
@@ -40,8 +39,8 @@ function mapSignal(s: ApiSignal): Signal {
     entry: s.entryPrice, target: s.targetPrice, sl: s.stopLoss, rr,
     reasoning: s.reasoning, indicators: s.indicators ?? {},
     generatedAt: isToday
-      ? t.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-      : t.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+      ? t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+      : t.toLocaleDateString(undefined, { day: "numeric", month: "short" }),
     // Every signal here is an intraday idea with a same-session horizon, so one
     // from a previous session is history, not a suggestion. Without this, a
     // signal from last Tuesday sat in the list looking exactly like one from a
@@ -84,25 +83,14 @@ export default function SignalsPage() {
   const [perfError, setPerfError] = useState("");
   const [retry, setRetry] = useState(0);
 
-  /* One shared market-status poll, from the dashboard layout. */
-  const { isLive: marketIsLive } = useMarketStatus();
-
   useEffect(() => {
     let alive = true;
-    const load = () => getSignals(100)
+    getSignals(100)
       .then(d => { if (alive) { setSignals(d.map(mapSignal)); setSigError(""); } })
       .catch(e => { if (alive) setSigError(errorMessage(e)); })
       .finally(() => { if (alive) setSigLoading(false); });
-
-    load();
-    // Nothing generates signals outside market hours, so polling then spends
-    // rate limit to re-fetch a list that cannot have changed. Fetch once and
-    // stop until the market reopens.
-    if (!marketIsLive) return () => { alive = false; };
-
-    const id = setInterval(load, 30_000);
-    return () => { alive = false; clearInterval(id); };
-  }, [retry, marketIsLive]);
+    return () => { alive = false; };
+  }, [retry]);
 
   useEffect(() => {
     if (tab !== "News" || loadedNews) return;
@@ -265,9 +253,9 @@ export default function SignalsPage() {
                         </div>
                         <span className="text-[10px] font-mono font-semibold">{sig.confidence}%</span>
                       </div>
-                      <div className="text-right text-sm font-mono">₹{sig.entry.toLocaleString("en-IN")}</div>
-                      <div className="text-right text-sm font-mono" style={{ color: "var(--buy)" }}>₹{sig.target.toLocaleString("en-IN")}</div>
-                      <div className="text-right text-sm font-mono" style={{ color: "var(--sell)" }}>₹{sig.sl.toLocaleString("en-IN")}</div>
+                      <div className="text-right text-sm font-mono">₹{sig.entry.toLocaleString(undefined)}</div>
+                      <div className="text-right text-sm font-mono" style={{ color: "var(--buy)" }}>₹{sig.target.toLocaleString(undefined)}</div>
+                      <div className="text-right text-sm font-mono" style={{ color: "var(--sell)" }}>₹{sig.sl.toLocaleString(undefined)}</div>
                       <div className="text-right text-sm font-mono font-semibold" style={{ color: "#e0ab4a" }}>{sig.rr}×</div>
                       <div className="text-right text-[10px] text-muted-foreground font-mono">
                         {sig.generatedAt}
@@ -455,8 +443,8 @@ export default function SignalsPage() {
                         <div className="text-center">
                           <span className="text-[10px] font-bold" style={{ color: s.direction === "BUY" ? "var(--buy)" : "var(--sell)" }}>{s.direction}</span>
                         </div>
-                        <div className="text-right text-sm font-mono">₹{s.entryPrice.toLocaleString("en-IN")}</div>
-                        <div className="text-right text-sm font-mono">{s.exitPrice != null ? `₹${s.exitPrice.toLocaleString("en-IN")}` : "—"}</div>
+                        <div className="text-right text-sm font-mono">₹{s.entryPrice.toLocaleString(undefined)}</div>
+                        <div className="text-right text-sm font-mono">{s.exitPrice != null ? `₹${s.exitPrice.toLocaleString(undefined)}` : "—"}</div>
                         <div className="text-center">
                           {oc === "OPEN" || oc === "NO_DATA" ? (
                             <span className="px-1.5 py-0.5 text-[9px] font-bold" style={{ border: `1px solid ${col}`, color: col }}>{label}</span>

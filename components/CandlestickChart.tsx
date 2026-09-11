@@ -434,26 +434,3 @@ function PaneToolbar({ rect, isFirst, isLast, onCollapse, onFullscreen, onMoveUp
     </div>
   );
 }
-
-/** Legend row for entry/target/stop + EMA color key, shown under the chart. */
-export function ChartLegend({ signal }: { signal: ChartSignal | null }) {
-  if (!signal) return null;
-  const isBuy = signal.direction === "BUY";
-  const isSell = signal.direction === "SELL";
-  return (
-    <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap mt-2">
-      <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t border-dashed border-muted-foreground" /> Entry ₹{signal.entryPrice}</span>
-      <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: "var(--buy)" }} /> Target ₹{signal.targetPrice}</span>
-      <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: "var(--sell)" }} /> Stop ₹{signal.stopLoss}</span>
-      <span
-        className="ml-auto px-2 py-0.5 font-bold text-[10px]"
-        style={{
-          background: isBuy ? "var(--buy)" : isSell ? "var(--sell)" : "var(--muted)",
-          color: isBuy || isSell ? "#0b0e14" : "var(--muted-foreground)",
-        }}
-      >
-        {signal.direction} · {Math.round(signal.confidence * 100)}%
-      </span>
-    </div>
-  );
-}
