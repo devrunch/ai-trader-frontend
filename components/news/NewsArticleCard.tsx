@@ -18,7 +18,7 @@ export function NewsArticleCard({ article: n }: { article: ApiNewsItem }) {
         {/* An unscored article arrives as NEUTRAL/0 with sentimentAvailable
             false. Rendering that as a plain "NEUTRAL" badge -- which this
             did until a real HF outage made it obvious -- tells the reader
-            FinBERT read the headline as neutral, when in fact nothing
+            the model read the headline as neutral, when in fact nothing
             scored it at all. Same "unavailable is not a value" rule the
             impacts block below already follows. */}
         {n.sentimentAvailable ? (

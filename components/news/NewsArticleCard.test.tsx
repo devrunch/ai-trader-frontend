@@ -13,7 +13,6 @@ function article(over: Partial<ApiNewsItem> = {}): ApiNewsItem {
     url: "https://example.com/a",
     publishedAt: new Date().toISOString(),
     sentiment: "POSITIVE",
-    sentimentScore: 0.9,
     sentimentAvailable: true,
     impacts: [],
     ...over,
@@ -28,15 +27,15 @@ describe("NewsArticleCard", () => {
 
   it("says Unscored rather than NEUTRAL when scoring was unavailable", () => {
     // The server sends NEUTRAL/0 for an unscored article. Rendering that
-    // label would claim FinBERT read the headline as neutral when nothing
+    // label would claim the model read the headline as neutral when nothing
     // scored it at all -- the exact bug a real HF outage exposed.
-    render(<NewsArticleCard article={article({ sentiment: "NEUTRAL", sentimentScore: 0, sentimentAvailable: false })} />);
+    render(<NewsArticleCard article={article({ sentiment: "NEUTRAL", sentimentAvailable: false })} />);
     expect(screen.getByText(/unscored/i)).toBeInTheDocument();
     expect(screen.queryByText("NEUTRAL")).not.toBeInTheDocument();
   });
 
   it("still shows a genuine NEUTRAL reading", () => {
-    render(<NewsArticleCard article={article({ sentiment: "NEUTRAL", sentimentScore: 0, sentimentAvailable: true })} />);
+    render(<NewsArticleCard article={article({ sentiment: "NEUTRAL", sentimentAvailable: true })} />);
     expect(screen.getByText("NEUTRAL")).toBeInTheDocument();
     expect(screen.queryByText(/unscored/i)).not.toBeInTheDocument();
   });

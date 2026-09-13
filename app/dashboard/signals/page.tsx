@@ -132,8 +132,8 @@ export default function SignalsPage() {
   const newsBySentiment = newsFilter === "All" ? news
     : newsFilter === "HAS_IMPACT" ? news.filter(n => (n.impacts?.length ?? 0) > 0)
     // sentimentAvailable, not just the label: an unscored article arrives
-    // as NEUTRAL/0, so filtering on the label alone would file every
-    // headline of a failed scoring run under "Neutral" as if FinBERT had
+    // as NEUTRAL, so filtering on the label alone would file every
+    // headline of a failed scoring run under "Neutral" as if the model had
     // actually read them that way.
     : news.filter(n => n.sentimentAvailable && n.sentiment === newsFilter);
 

@@ -31,9 +31,8 @@ export interface ApiNewsItem {
   url: string;
   publishedAt: string;
   sentiment: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
-  sentimentScore: number;
   /** False means the sentiment above is "we could not score it" (always
-   *  NEUTRAL/0 in that case), not "FinBERT read it as neutral". */
+   *  NEUTRAL in that case), not "the model read it as neutral". */
   sentimentAvailable: boolean;
   /** Real per-symbol impact, or null when the whole batch couldn't be
    *  analyzed (no LLM configured, the call failed) -- never collapse that
