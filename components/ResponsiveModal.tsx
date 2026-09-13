@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 /** Shared backdrop/sizing chrome for every modal dialog in the app.
  *  Centered card >=640px (today's existing look, unchanged); full-screen
@@ -43,13 +43,14 @@ function useNarrowViewport(): boolean {
 }
 
 function useMatchMedia(query: string): boolean {
-  const [matches, setMatches] = useState(false);
-  useEffect(() => {
+  // useSyncExternalStore, not useState+useEffect: matchMedia IS an external
+  // store, and reading it in an effect meant a render with the wrong answer
+  // before the correction. `false` is the server snapshot, so SSR renders the
+  // non-mobile branch and hydration corrects it in one pass.
+  const subscribe = useCallback((onChange: () => void) => {
     const mql = window.matchMedia(query);
-    setMatches(mql.matches);
-    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
   }, [query]);
-  return matches;
+  return useSyncExternalStore(subscribe, () => window.matchMedia(query).matches, () => false);
 }

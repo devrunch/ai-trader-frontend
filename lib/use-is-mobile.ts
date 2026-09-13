@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 const QUERY = "(max-width: 1023px)";
 
@@ -10,15 +10,17 @@ const QUERY = "(max-width: 1023px)";
  *  viewport is known. Rendering nothing for that one frame is cheaper than
  *  guessing wrong. */
 export function useIsMobile(): boolean | null {
-  const [isMobile, setIsMobile] = useState<boolean | null>(null);
-
-  useEffect(() => {
+  // useSyncExternalStore, not useState+useEffect: matchMedia IS an external
+  // store. The server snapshot stays null, which preserves the "render nothing
+  // until the real viewport is known" behaviour described above.
+  const subscribe = useCallback((onChange: () => void) => {
     const mql = window.matchMedia(QUERY);
-    setIsMobile(mql.matches);
-    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
   }, []);
-
-  return isMobile;
+  return useSyncExternalStore<boolean | null>(
+    subscribe,
+    () => window.matchMedia(QUERY).matches,
+    () => null,
+  );
 }

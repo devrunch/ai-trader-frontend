@@ -48,7 +48,7 @@ describe("createHeikinAshiRenderer", () => {
     // still-forming candle), not a new bar. HA_open must stay 103 (still
     // derived from bar[1]'s own HA, untouched), only close/high/low move.
     updateBar({ time: 300, open: 108, high: 112, low: 104, close: 109, volume: 0 });
-    let last = point(series.data()[2] as CandlestickData<Time>);
+    const last = point(series.data()[2] as CandlestickData<Time>);
     expect(last).toEqual({ open: CLOSE(103), high: CLOSE(112), low: CLOSE(103), close: CLOSE(108.25) });
 
     // A genuinely new bar (new time) -- its own HA_open must derive from
