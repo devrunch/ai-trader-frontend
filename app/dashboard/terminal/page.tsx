@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from "react";
 import {
   getHistorical,
-  getTickVolume,
   getTicks,
   getQuote,
   getWatchlist,
@@ -596,20 +595,8 @@ export default function TerminalPage() {
       .catch(() => []);
   }, [activeSymbol, activeExchange, candleInterval]);
 
-  /* Keeps the still-forming candle's volume live for FOREX/metals -- their
-     real volume (Dukascopy tick count, see lib/api/market.ts's own docs)
-     only otherwise refreshes on a fresh historical fetch, unlike NSE/BSE
-     where Kite's live ticks already carry real volume. Only wired into
-     CandlestickChart's onPollVolume prop when activeExchange === "FOREX"
-     (see the JSX below) -- the prop's mere PRESENCE is what starts the
-     chart adapter's poll timer, so this must not be handed to a chart that
-     doesn't need it. */
-  const handlePollVolume = useCallback((bucketStartSec: number): Promise<number | null> => {
-    return getTickVolume(activeSymbol, bucketStartSec).then((r) => r.count).catch(() => null);
-  }, [activeSymbol]);
-
   /* Volume Footprint/TPO's own data source -- real ECN ticks, FOREX/metals
-     only, same reasoning as handlePollVolume above. Only wired in for
+     only. Only wired in for
      activeExchange === "FOREX" (see the JSX below); those two chart types
      already degrade to plain candles with no overlay when this resolves
      null (a non-FOREX symbol, or the vendor call failing). */
@@ -739,10 +726,8 @@ export default function TerminalPage() {
   const sharedProps: DesktopTerminalLayoutProps = {
     activeSymbol, activeExchange, quote, connected, ltp, change, changePct, isUp, bid, ask, spread,
     bars, barsLoading, barsError, setBarsReload, handleLoadMore,
-    // Only FOREX/metals need this -- see handlePollVolume's own docs above.
-    // The prop's mere presence is what starts the adapter's poll timer, so
-    // it must genuinely be undefined here, not a function that just no-ops.
-    onPollVolume: activeExchange === "FOREX" ? handlePollVolume : undefined,
+    // Only Volume Footprint/TPO need this, and only FOREX/metals have a
+    // tick feed behind it.
     onFetchTicks: activeExchange === "FOREX" ? handleFetchTicks : undefined,
     chartRef, setChartReady, activeTool, pickTool, clearMyDrawings, resetChart, layout,
     indicators, setIndicators, indicatorPickerOpen, setIndicatorPickerOpen, pickerEntries, setApiIndicators,

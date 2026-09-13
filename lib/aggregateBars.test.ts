@@ -56,8 +56,8 @@ describe("aggregateBars", () => {
   });
 
   it("reports no volume rather than zero when nothing was measured", () => {
-    // Forex bars older than the tick-volume window carry no volume at all,
-    // and summing them to 0 presents an unmeasured stretch as a dead one.
+    // Forex and metals carry no volume at all: the vendor publishes none,
+    // and summing nothing to 0 presents it as a dead market.
     const bars = [0, 1, 2].map((i) => ({ ...bar(i, i * MINUTE), volume: null }));
     const [merged] = aggregateBars(bars, 3, true);
     expect(merged.volume).toBeNull();
