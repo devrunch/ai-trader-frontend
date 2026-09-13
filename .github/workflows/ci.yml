@@ -32,7 +32,9 @@ jobs:
   image:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    # ARM, because the production box is Graviton (t4g). An x86 image pulls
+    # there with "no matching manifest for linux/arm64". Free for public repos.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     permissions:
       contents: read
@@ -52,6 +54,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/arm64
           # The public origin is inlined into the bundle at build time.
           build-args: NEXT_PUBLIC_API_URL=https://3.7.76.174.sslip.io
           tags: |
