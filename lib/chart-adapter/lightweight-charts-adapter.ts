@@ -206,7 +206,10 @@ export class LightweightChartsAdapter implements ChartAdapter {
         if (!bar) { onCrosshairMove(null); return; }
         onCrosshairMove({
           time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close,
-          volume: bar.volume ?? 0,
+          // Passed through, not coalesced: this is what the OHLCV readout
+          // prints, and a 0 here was showing "Vol 0" on symbols that have no
+          // volume at all.
+          volume: bar.volume,
         });
       });
     }
@@ -601,7 +604,11 @@ export class LightweightChartsAdapter implements ChartAdapter {
       // current period -- never backfills fabricated flat candles for
       // periods with no real tick data.
       const bucketStart = last.time + Math.floor((nowSec - last.time) / intervalSec) * intervalSec;
-      const newBar = { time: bucketStart, open: price, high: price, low: price, close: price, volume: 0 };
+      // volume null, not 0: a live tick carries a price, never a traded
+      // quantity. A zero here is the same fabrication the rest of the chart
+      // stopped making -- and on a forex symbol, which has no volume at all,
+      // it is what put "Vol 0" under the forming bar.
+      const newBar = { time: bucketStart, open: price, high: price, low: price, close: price, volume: null };
       this.bars.push(newBar);
       this.renderer.updateBar(newBar);
       return;
