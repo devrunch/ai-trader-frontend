@@ -54,4 +54,22 @@ describe("aggregateBars", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ open: 0, close: 33 });
   });
+
+  it("reports no volume rather than zero when nothing was measured", () => {
+    // Forex bars older than the tick-volume window carry no volume at all,
+    // and summing them to 0 presents an unmeasured stretch as a dead one.
+    const bars = [0, 1, 2].map((i) => ({ ...bar(i, i * MINUTE), volume: null }));
+    const [merged] = aggregateBars(bars, 3, true);
+    expect(merged.volume).toBeNull();
+  });
+
+  it("still sums the measured part of a mixed chunk", () => {
+    const bars = [
+      { ...bar(0, 0), volume: 100 },
+      { ...bar(1, MINUTE), volume: null },
+      { ...bar(2, 2 * MINUTE), volume: 50 },
+    ];
+    const [merged] = aggregateBars(bars, 3, true);
+    expect(merged.volume).toBe(150);
+  });
 });

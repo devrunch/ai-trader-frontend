@@ -38,6 +38,11 @@ function mergeChunk(chunk: ApiOhlcBar[]): ApiOhlcBar {
     high: Math.max(...chunk.map((b) => b.high)),
     low: Math.min(...chunk.map((b) => b.low)),
     close: chunk[chunk.length - 1].close,
-    volume: chunk.reduce((sum, b) => sum + (b.volume ?? 0), 0),
+    // Null when nothing in the chunk was measured, rather than a confident
+    // 0. A partly-measured chunk still sums what exists -- an understated
+    // number is honest here; a zero would not be.
+    volume: chunk.some((b) => b.volume != null)
+      ? chunk.reduce((sum, b) => sum + (b.volume ?? 0), 0)
+      : null,
   };
 }

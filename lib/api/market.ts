@@ -46,7 +46,12 @@ export interface ApiOhlcBar {
   high: number;
   low: number;
   close: number;
-  volume: number;
+  /** null means the bar's volume was never measured, which is not the same
+   *  as no trading. Forex/metals volume is a Dukascopy tick count fetched
+   *  only for the recent stretch worth paying for, so most of a long gold
+   *  chart is legitimately unmeasured -- rendering that as 0 makes the older
+   *  half look like a dead market. */
+  volume: number | null;
 }
 
 export interface Quote {

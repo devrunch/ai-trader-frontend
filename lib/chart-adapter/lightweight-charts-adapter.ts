@@ -158,11 +158,20 @@ export class LightweightChartsAdapter implements ChartAdapter {
    *  Volume Spread Analysis depending on the current toggle -- shared by
    *  mount() and loadMore() so the two never drift out of sync on which
    *  coloring is active. */
-  private buildVolumeData(bars: ApiOhlcBar[]): { time: never; value: number; color: string }[] {
+  private buildVolumeData(
+    bars: ApiOhlcBar[],
+  ): ({ time: never; value: number; color: string } | { time: never })[] {
     const colors = this.vsaEnabled
       ? computeVsaColors(bars)
       : bars.map((b) => (b.close >= b.open ? "#16c78466" : "#f0525d66"));
-    return bars.map((b, i) => ({ time: b.time as never, value: b.volume ?? 0, color: colors[i] }));
+    // A bar with no measured volume becomes a whitespace point: the histogram
+    // leaves a gap rather than drawing a zero, which reads as "nothing traded"
+    // and is a different claim from "nobody counted".
+    return bars.map((b, i) =>
+      b.volume == null
+        ? { time: b.time as never }
+        : { time: b.time as never, value: b.volume, color: colors[i] },
+    );
   }
 
   /** Overwrites just the LAST bar's volume and redraws the histogram --

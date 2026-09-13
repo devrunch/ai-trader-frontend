@@ -17,6 +17,12 @@ const NO_DEMAND_SUPPLY = "#f0b90b88"; // narrow spread, high volume -- effort me
 const EFFORT_NO_RESULT = "#a855f788"; // wide spread, low volume -- move isn't backed by volume
 const NORMAL_UP = "#16c78466";
 const NORMAL_DOWN = "#f0525d66";
+// A bar whose volume was never measured cannot be classified at all: VSA is
+// entirely a statement about volume. Treating it as 0 put every unmeasured
+// bar in the low-volume categories, which is what made the older half of a
+// gold chart a different shade from the recent half.
+const UNMEASURED_UP = "#16c78422";
+const UNMEASURED_DOWN = "#f0525d22";
 
 /** The same four categories `computeVsaColors` assigns, for a UI color key --
  *  kept next to the colors themselves so the two can't drift apart. */
@@ -42,10 +48,15 @@ export function computeVsaColors(bars: ApiOhlcBar[]): string[] {
     const isUp = bar.close >= bar.open;
     if (window.length === 0) return isUp ? NORMAL_UP : NORMAL_DOWN;
 
+    if (bar.volume == null) return isUp ? UNMEASURED_UP : UNMEASURED_DOWN;
+
     const avgSpread = average(window.map((b) => b.high - b.low));
-    const avgVolume = average(window.map((b) => b.volume ?? 0));
+    // Only measured neighbours: averaging a fabricated 0 in drags the
+    // baseline down and turns ordinary bars into "high volume" ones.
+    const measured = window.map((b) => b.volume).filter((v): v is number => v != null);
+    const avgVolume = average(measured);
     const spread = bar.high - bar.low;
-    const volume = bar.volume ?? 0;
+    const volume = bar.volume;
     const spreadRatio = avgSpread > 0 ? spread / avgSpread : 1;
     const volRatio = avgVolume > 0 ? volume / avgVolume : 1;
 
