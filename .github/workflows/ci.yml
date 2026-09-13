@@ -32,7 +32,7 @@ jobs:
   # shipped as a tarball of Next's standalone output instead.
   bundle:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     # ARM and Node 20, both matching the box: the standalone output carries a
     # platform-specific SWC binary and runs on whatever Node is installed there.
     runs-on: ubuntu-24.04-arm
@@ -82,7 +82,7 @@ jobs:
   # whole stack ends up on the latest commit of each.
   deploy:
     needs: [test, bundle]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     # One deploy at a time per repo. Across repos, the box itself serialises
