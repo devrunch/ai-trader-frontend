@@ -3,6 +3,7 @@ import type { ChatDrawing } from "@/lib/api/chat";
 import type { SavedDrawing } from "@/lib/api/charts";
 import type { PineInputMeta } from "@/lib/api/pine";
 import type { VolumeProfileMode } from "./volume-profile-primitive";
+import type { BreakoutProbabilityOptions } from "./breakout-probability-primitive";
 import type { ChartTypeId } from "./chart-types/types";
 
 export type { VolumeProfileMode, ChartTypeId };
@@ -148,6 +149,11 @@ export interface ChartAdapter {
    *  once (e.g. Session alongside Visible Range), each independently keyed
    *  by `id`, same as Pine indicators. */
   attachVolumeProfile(id: string, mode: VolumeProfileMode): void;
+  /** Breakout Probability levels, native for the same reason Volume
+   *  Profile is: the Pine sandbox forwards plots, not labelled lines. */
+  attachBreakoutProbability(id: string, options?: Partial<BreakoutProbabilityOptions>): void;
+  removeBreakoutProbability(id: string): void;
+  setBreakoutProbabilityOptions(id: string, options: Partial<BreakoutProbabilityOptions>): void;
   removeVolumeProfile(id: string): void;
 
   /** Show/hide an attached indicator (Pine or Volume Profile) without

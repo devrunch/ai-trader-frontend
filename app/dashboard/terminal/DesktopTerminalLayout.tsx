@@ -85,6 +85,8 @@ export interface DesktopTerminalLayoutProps {
   setVolumeProfiles: Dispatch<SetStateAction<Set<string>>>;
   vsaOn: boolean;
   setVsaOn: Dispatch<SetStateAction<boolean>>;
+  breakoutOn: boolean;
+  setBreakoutOn: Dispatch<SetStateAction<boolean>>;
 
   period: string;
   // A plain callback, not a raw Dispatch -- picking a period also resets
@@ -150,7 +152,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
     indicatorError, setIndicatorError, attachOne,
     settingsTarget, setSettingsTarget, handleSaveIndicatorSettings,
     legendItems, handleDeleteIndicator, handleToggleIndicatorVisible,
-    volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn,
+    volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn, breakoutOn, setBreakoutOn,
     period, setPeriod,
     candleInterval, setCandleInterval,
     chartType, setChartType,
@@ -238,7 +240,7 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
           open={indicatorPickerOpen}
           onClose={() => setIndicatorPickerOpen(false)}
           entries={pickerEntries}
-          attachedIds={new Set([...indicators.map((i) => i.id), ...volumeProfiles, ...(vsaOn ? ["vsa"] : [])])}
+          attachedIds={new Set([...indicators.map((i) => i.id), ...volumeProfiles, ...(vsaOn ? ["vsa"] : []), ...(breakoutOn ? ["breakout-probability"] : [])])}
           onToggle={(entry) => {
             if (entry.kind === "volume-profile") {
               setVolumeProfiles((prev) => {
@@ -250,6 +252,12 @@ export function DesktopTerminalLayout(props: DesktopTerminalLayoutProps) {
             }
             if (entry.kind === "vsa") {
               setVsaOn((on) => !on);
+              return;
+            }
+            if (entry.kind === "breakout-probability") {
+              // A native overlay, like Volume Profile: it carries no Pine
+              // source for the runner to execute.
+              setBreakoutOn((on) => !on);
               return;
             }
             setIndicators((prev) =>

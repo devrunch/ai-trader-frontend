@@ -41,7 +41,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
     prefill, setPrefill,
     positions, positionsLoading, positionsError, setPositionsReload, selectSymbol,
     applyDrawings, removeTurnDrawings, applyIndicatorChanges, applyCustomIndicators,
-    volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn,
+    volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn, breakoutOn, setBreakoutOn,
     searchOpen, setSearchOpen, searchQuery, setSearchQuery, handleSearchKeyDown,
     q, resultFilter, setResultFilter, searchingSymbols, symbolMatches, filteredMatches,
     highlightedIndex, setHighlightedIndex, searchExchange, setSearchExchange,
@@ -184,7 +184,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
         open={indicatorPickerOpen}
         onClose={() => setIndicatorPickerOpen(false)}
         entries={pickerEntries}
-        attachedIds={new Set([...indicators.map((i) => i.id), ...volumeProfiles, ...(vsaOn ? ["vsa"] : [])])}
+        attachedIds={new Set([...indicators.map((i) => i.id), ...volumeProfiles, ...(vsaOn ? ["vsa"] : []), ...(breakoutOn ? ["breakout-probability"] : [])])}
         onToggle={(entry) => {
           if (entry.kind === "volume-profile") {
             setVolumeProfiles((prev) => {
@@ -196,6 +196,12 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
           }
           if (entry.kind === "vsa") {
             setVsaOn((on) => !on);
+            return;
+          }
+          if (entry.kind === "breakout-probability") {
+            // A native overlay, like Volume Profile: it carries no Pine
+            // source for the runner to execute.
+            setBreakoutOn((on) => !on);
             return;
           }
           setIndicators((prev) =>

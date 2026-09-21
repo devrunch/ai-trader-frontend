@@ -6,6 +6,7 @@ import { runPineIndicator, type PineInputMeta } from "@/lib/api/pine";
 import { attachPinePlotsToPane } from "./pine-render";
 import { createSegmentPrimitive, createRayPrimitive, createRectPrimitive, createFibonacciPrimitive, createTradeMarkerPrimitive, type DrawPoint } from "./drawing-primitives";
 import { createVolumeProfilePrimitive, type VolumeProfileHandle, type VolumeProfileMode } from "./volume-profile-primitive";
+import { createBreakoutProbabilityPrimitive, type BreakoutProbabilityHandle, type BreakoutProbabilityOptions } from "./breakout-probability-primitive";
 import { computeVsaColors } from "./vsa-colors";
 import { INDICATOR_COLORS } from "./palette";
 import { rendererFor } from "./chart-types/registry";
@@ -125,6 +126,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
   private onFetchTicksFn?: (sinceSec: number, untilSec: number) => Promise<{ t: number; p: number }[] | null>;
   private drawings = new Map<string, DrawingEntry[]>();
   private volumeProfileHandles = new Map<string, VolumeProfileHandle>();
+  private breakoutHandles = new Map<string, BreakoutProbabilityHandle>();
   private containerEl: HTMLElement | null = null;
   /** Stretch factors saved before a pane's collapse, keyed by the pane's
    *  identity (its own series, not its index -- index shifts if another
@@ -244,6 +246,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
       }
     }
     for (const handle of this.volumeProfileHandles.values()) this.mainSeries.attachPrimitive(handle.primitive);
+    for (const handle of this.breakoutHandles.values()) this.mainSeries.attachPrimitive(handle.primitive);
   }
 
   getChartType(): ChartTypeId {
@@ -308,6 +311,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
     this.volumeSeries = null;
     this.pineSeries.clear();
     this.volumeProfileHandles.clear();
+    this.breakoutHandles.clear();
     this.containerEl = null;
     this.collapsedPanes.clear();
     this.fullscreenPane = null;
@@ -321,6 +325,31 @@ export class LightweightChartsAdapter implements ChartAdapter {
     this.volumeProfileHandles.set(id, handle);
   }
 
+  attachBreakoutProbability(id: string, options?: Partial<BreakoutProbabilityOptions>): void {
+    if (!this.mainSeries || this.breakoutHandles.has(id)) return;
+    const handle = createBreakoutProbabilityPrimitive(() => this.bars, options);
+    this.mainSeries.attachPrimitive(handle.primitive);
+    this.breakoutHandles.set(id, handle);
+  }
+
+  removeBreakoutProbability(id: string): void {
+    const handle = this.breakoutHandles.get(id);
+    if (!handle || !this.mainSeries) return;
+    this.mainSeries.detachPrimitive(handle.primitive);
+    this.breakoutHandles.delete(id);
+  }
+
+  /** Settings changes (step size, how many levels) without a detach/attach
+   *  cycle, so the overlay does not blink off and back on. */
+  setBreakoutProbabilityOptions(id: string, options: Partial<BreakoutProbabilityOptions>): void {
+    this.breakoutHandles.get(id)?.setOptions(options);
+  }
+
+  /** The current probabilities, for a legend or panel to render. */
+  getBreakoutProbability(id: string) {
+    return this.breakoutHandles.get(id)?.getResult() ?? null;
+  }
+
   removeVolumeProfile(id: string): void {
     const handle = this.volumeProfileHandles.get(id);
     if (!handle || !this.mainSeries) return;
@@ -332,6 +361,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
     const series = this.pineSeries.get(id);
     if (series) { for (const s of series) s.applyOptions({ visible }); return; }
     this.volumeProfileHandles.get(id)?.setVisible(visible);
+    this.breakoutHandles.get(id)?.setVisible(visible);
   }
 
   /** Which pane (by index) currently contains this series -- computed live
@@ -444,6 +474,8 @@ export class LightweightChartsAdapter implements ChartAdapter {
 
   /** Test-only: whether a Volume Profile with this id is currently attached. */
   __test_hasVolumeProfile(id: string): boolean { return this.volumeProfileHandles.has(id); }
+  /** @internal test seam */
+  __test_hasBreakout(id: string): boolean { return this.breakoutHandles.has(id); }
 
   /** Test-only: whether a Volume Profile with this id is currently visible. */
   __test_isVolumeProfileVisible(id: string): boolean | undefined { return this.volumeProfileHandles.get(id)?.getVisible(); }

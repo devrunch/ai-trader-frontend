@@ -40,6 +40,7 @@ import type { DrawTool } from "@/components/terminal/DrawingToolbar";
 import type { PickerEntry } from "@/components/terminal/IndicatorPickerModal";
 import type { IndicatorSettingsResult } from "@/components/terminal/IndicatorSettingsModal";
 import { SPECIAL_INDICATORS, VOLUME_PROFILE_MODE_BY_ID, INDICATOR_NAME_BY_ID } from "@/lib/indicators/catalog";
+const BREAKOUT_ID = "breakout-probability";
 import { VSA_LEGEND } from "@/lib/chart-adapter/vsa-colors";
 import type { AttachedIndicator } from "@/lib/api/charts";
 import { MAX_WATCHLIST_SIZE, DEFAULT_SYMBOL, DEFAULT_EXCHANGE } from "@/lib/terminal-constants";
@@ -345,6 +346,18 @@ export default function TerminalPage() {
   useEffect(() => {
     chartRef.current?.setVolumeSpreadAnalysis(vsaOn);
   }, [vsaOn, chartReady]);
+
+  // Breakout Probability: ten labelled levels drawn straight onto the main
+  // series, so like Volume Profile it attaches through the adapter rather
+  // than running as Pine. A single switch -- the levels are anchored to the
+  // last bar, so a second copy would draw on top of the first.
+  const [breakoutOn, setBreakoutOn] = useState(false);
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    if (breakoutOn) chart.attachBreakoutProbability(BREAKOUT_ID);
+    else chart.removeBreakoutProbability(BREAKOUT_ID);
+  }, [breakoutOn, chartReady]);
 
   // The on-chart legend's hide toggle. Not persisted through save/restore --
   // only attach/detach does that; hidden state resets to visible on reload,
@@ -735,7 +748,7 @@ export default function TerminalPage() {
     indicatorError, setIndicatorError, attachOne,
     settingsTarget, setSettingsTarget, handleSaveIndicatorSettings,
     legendItems, handleDeleteIndicator, handleToggleIndicatorVisible,
-    volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn,
+    volumeProfiles, setVolumeProfiles, vsaOn, setVsaOn, breakoutOn, setBreakoutOn,
     period, setPeriod: pickPeriod,
     candleInterval, setCandleInterval,
     chartType, setChartType,

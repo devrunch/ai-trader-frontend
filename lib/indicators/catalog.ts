@@ -1,13 +1,14 @@
 import type { AttachedIndicator } from "@/lib/api/charts";
 import type { ApiIndicator } from "@/lib/api/indicators";
 import type { VolumeProfileMode } from "@/lib/chart-adapter/volume-profile-primitive";
+import type { BreakoutProbabilityOptions } from "@/lib/chart-adapter/breakout-probability-primitive";
 
 export type IndicatorCategory = "Moving Averages" | "Trend" | "Momentum" | "Volatility" | "Volume";
 
 export const INDICATOR_CATEGORIES: IndicatorCategory[] = ["Moving Averages", "Trend", "Volatility", "Momentum", "Volume"];
 
 /**
- * The two kinds of indicator that aren't real Pine scripts, and so can't
+ * The three kinds of indicator that aren't real Pine scripts, and so can't
  * live in the DB-backed indicator list (see lib/api/indicators.ts) the way
  * the 49 built-ins and every user's own custom indicators now do. Volume
  * Profile is a price-bucketed histogram with no time axis of its own -- not
@@ -16,11 +17,16 @@ export const INDICATOR_CATEGORIES: IndicatorCategory[] = ["Moving Averages", "Tr
  * recolors the existing volume histogram in place rather than adding a
  * series, toggled through setVolumeSpreadAnalysis(). Several Volume Profile
  * entries can be attached at once; VSA is a single on/off switch (there's
- * only one volume histogram to recolor).
+ * only one volume histogram to recolor). Breakout Probability draws ten
+ * labelled price levels: Pine can express the arithmetic, but the sandbox
+ * forwards plot() output only and drops line/label/linefill drawings, so a
+ * Pine version would render ten unlabelled lines -- which is the one thing
+ * that makes it useless.
  */
 export type SpecialIndicatorEntry =
   | { kind: "volume-profile"; id: string; name: string; category: IndicatorCategory; pane: "main" | "sub"; mode: VolumeProfileMode }
-  | { kind: "vsa"; id: string; name: string; category: IndicatorCategory; pane: "volume" };
+  | { kind: "vsa"; id: string; name: string; category: IndicatorCategory; pane: "volume" }
+  | { kind: "breakout-probability"; id: string; name: string; category: IndicatorCategory; pane: "main"; options?: Partial<BreakoutProbabilityOptions> };
 
 export const SPECIAL_INDICATORS: SpecialIndicatorEntry[] = [
   { kind: "vsa", id: "vsa", name: "Volume Spread Analysis", category: "Volume", pane: "volume" },
@@ -33,7 +39,15 @@ export const SPECIAL_INDICATORS: SpecialIndicatorEntry[] = [
   { kind: "volume-profile", id: "vp-session-hd", name: "Session Volume Profile HD", category: "Volume", pane: "main", mode: "session-hd" },
   { kind: "volume-profile", id: "vp-auto-anchored", name: "Auto Anchored Volume Profile", category: "Volume", pane: "main", mode: "auto-anchored" },
   { kind: "volume-profile", id: "vp-periodic", name: "Periodic Volume Profile", category: "Volume", pane: "main", mode: "periodic" },
+  { kind: "breakout-probability", id: "breakout-probability", name: "Breakout Probability", category: "Volatility", pane: "main" },
 ];
+
+/** ids of the entries drawn as native overlays on the main series, so a
+ *  caller holding only an id knows to route it to the adapter rather than to
+ *  the Pine runner. */
+export const BREAKOUT_PROBABILITY_IDS: ReadonlySet<string> = new Set(
+  SPECIAL_INDICATORS.filter((e) => e.kind === "breakout-probability").map((e) => e.id),
+);
 
 export function toAttachedIndicator(entry: ApiIndicator): AttachedIndicator {
   return { id: entry.id, source: entry.source, label: entry.name, pane: entry.pane };

@@ -730,3 +730,54 @@ describe("LightweightChartsAdapter", () => {
     adapter.dispose();
   });
 });
+
+describe("breakout probability overlay", () => {
+  const BARS = [
+    { time: 1767000900, open: 100, high: 110, low: 100, close: 108, volume: 1000 },
+    { time: 1767000960, open: 108, high: 115, low: 105, close: 100, volume: 1200 },
+    { time: 1767001020, open: 100, high: 110, low: 100, close: 108, volume: 1300 },
+  ];
+
+  it("attaches, reports a read, and detaches", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: BARS });
+
+    adapter.attachBreakoutProbability("bp");
+    expect(adapter.__test_hasBreakout("bp")).toBe(true);
+
+    adapter.removeBreakoutProbability("bp");
+    expect(adapter.__test_hasBreakout("bp")).toBe(false);
+    adapter.dispose();
+  });
+
+  it("does not attach the same overlay twice", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: BARS });
+
+    adapter.attachBreakoutProbability("bp");
+    adapter.attachBreakoutProbability("bp");
+    adapter.removeBreakoutProbability("bp");
+    // A second attach that silently added a duplicate primitive would leave
+    // one still drawing after the remove.
+    expect(adapter.__test_hasBreakout("bp")).toBe(false);
+    adapter.dispose();
+  });
+
+  it("survives a chart-type change, like the other overlays", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: BARS });
+
+    adapter.attachBreakoutProbability("bp");
+    adapter.setChartType("bars");
+    // setChartType rebuilds the main series; an overlay that is not
+    // re-attached disappears without any error to explain why.
+    expect(adapter.__test_hasBreakout("bp")).toBe(true);
+    adapter.dispose();
+  });
+});
