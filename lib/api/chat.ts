@@ -56,8 +56,58 @@ export interface IndicatorChanges {
   edit_source?: IndicatorSourceEdit[];
   remove?: string[];
 }
+/**
+ * A costed, gate-checked trade. Every number is computed on the server by
+ * `propose_trade`; the model supplies only the direction.
+ *
+ * Rendered as a card rather than left in the prose for a reason beyond looks:
+ * the card can only appear when the geometry was actually computed, so a turn
+ * that answered from the chart alone shows no numbers instead of plausible
+ * ones. The agent has written its own setups before and the arithmetic was
+ * wrong in ways that read as confident.
+ */
+export interface ChatTradeResult {
+  symbol: string;
+  interval: string;
+  direction: "BUY" | "SELL";
+  /** `rejected` fails a gate the signal engine enforces; `not_applicable` is an
+   *  option, whose premium these price-based gates do not describe. */
+  verdict: "passes_every_gate" | "rejected" | "not_applicable";
+  entry: number;
+  stop: number;
+  target: number;
+  last_price: number;
+  risk_per_unit: number;
+  reward_per_unit: number;
+  reward_risk: number | null;
+  risk_pct_of_entry: number | null;
+  atr: number | null;
+  stop_in_atr: number;
+  how_stop_was_placed: string;
+  target_source: string;
+  gates: { gate: string; passed: boolean; detail: string | null }[];
+  rejected_because?: string[];
+  to_make_it_work?: { target_for_min_rr: number; min_reward_risk: number; note: string };
+  contract?: {
+    resolved_symbol: string; underlying: string; instrument_type: string;
+    lot_size: number | null; expiry: string; strike?: number | null;
+  };
+  position_size?: {
+    unit?: string; lots?: number | null; lot_size?: number;
+    risk_per_lot?: number; notional_per_lot?: number;
+    shares?: number; sized_against?: string | null;
+    how_to_size?: string; margin_note?: string; note?: string; error?: string;
+  };
+  /** False for a short: the built-in paper account is long-only. */
+  executable_here?: boolean;
+  executable_note?: string;
+  note?: string;
+}
+
 export interface ChatResults {
   strategy?: ChatStrategyResult;
+  /** A costed trade from propose_trade, rendered as its own card. */
+  trade?: ChatTradeResult;
   simulation?: ChatSimulationResult;
   /** Agent authored one or more custom Pine indicators */
   custom_indicators?: CustomIndicatorSpec[];

@@ -85,6 +85,7 @@ export function ChatMessage({
           />
         )}
 
+        {message.results?.trade && <TradeCard trade={message.results.trade} />}
         {message.results?.strategy && <StrategyCard strategy={message.results.strategy} />}
         {simulation && <SimulationCard simulation={simulation} />}
 
@@ -99,6 +100,105 @@ export function ChatMessage({
       </div>
     </div>
   );
+}
+
+/**
+ * The trade, as numbers rather than a paragraph.
+ *
+ * A trader reads this between candles. The verdict goes first and large; the
+ * levels sit in a fixed order so the eye lands on the same place every time.
+ *
+ * The verdict is never implied by styling alone — a rejected setup says
+ * REJECTED in words next to the reason, because a card that merely looks
+ * different still reads as a recommendation to someone scrolling.
+ */
+function TradeCard({ trade }: { trade: NonNullable<ChatResults["trade"]> }) {
+  const passes = trade.verdict === "passes_every_gate";
+  const notApplicable = trade.verdict === "not_applicable";
+  const long = trade.direction === "BUY";
+  const accent = notApplicable
+    ? "var(--muted-foreground)"
+    : passes
+      ? (long ? "var(--buy)" : "var(--sell)")
+      : "var(--sell)";
+  const verdictLabel = notApplicable
+    ? "NOT APPLICABLE"
+    : passes ? trade.direction : `${trade.direction} · REJECTED`;
+
+  const size = trade.position_size;
+  const lots = size?.lots;
+  const shares = size?.shares;
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border/60 font-mono text-[11px] space-y-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-semibold tracking-wide" style={{ color: accent }}>
+          {verdictLabel}
+        </span>
+        <span className="text-muted-foreground">
+          {trade.symbol} · {trade.interval}
+        </span>
+      </div>
+
+      {/* Suppressed for an option: these are price-based levels and a premium
+          is not price, so showing them in the same grid as a future's would
+          invite exactly the misreading the verdict is warning about. */}
+      {!notApplicable && (
+        <>
+          <Row label="Entry" value={fmt(trade.entry)} />
+          <Row label="Stop" value={fmt(trade.stop)} colour="var(--sell)" />
+          <Row label="Target" value={fmt(trade.target)} colour="var(--buy)" />
+          {trade.reward_risk != null && (
+            <Row label="R:R" value={`${trade.reward_risk}×`} />
+          )}
+          <Row
+            label="Risk"
+            value={
+              size?.risk_per_lot != null
+                ? `${fmt(size.risk_per_lot)} / lot`
+                : `${fmt(trade.risk_per_unit)} / unit`
+            }
+          />
+          {lots != null && <Row label="Size" value={`${lots} lot${lots === 1 ? "" : "s"}`} />}
+          {lots == null && shares != null && <Row label="Size" value={`${shares} units`} />}
+        </>
+      )}
+
+      {trade.contract?.expiry && (
+        <Row label="Expiry" value={`${trade.contract.expiry}${
+          trade.contract.lot_size ? ` · lot ${trade.contract.lot_size}` : ""}`} />
+      )}
+
+      {/* The binding reason, not every gate that ran. */}
+      {trade.rejected_because?.length ? (
+        <p className="text-muted-foreground leading-snug pt-1 font-sans">
+          {trade.rejected_because[0]}
+        </p>
+      ) : null}
+
+      {notApplicable && trade.note && (
+        <p className="text-muted-foreground leading-snug pt-1 font-sans">{trade.note}</p>
+      )}
+
+      {/* Sizing the user still has to do themselves, and why. */}
+      {size?.how_to_size && (
+        <p className="text-muted-foreground leading-snug pt-1 font-sans">{size.how_to_size}</p>
+      )}
+
+      {trade.executable_here === false && trade.executable_note && (
+        <p className="text-muted-foreground leading-snug pt-1 font-sans">
+          {trade.executable_note}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Levels keep their own precision — rounding 1.1052 to 1.11 moves a forex
+ *  stop by forty pips. */
+function fmt(n: number): string {
+  const digits = Math.abs(n) < 100 ? 4 : 2;
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: digits });
 }
 
 function StrategyCard({ strategy }: { strategy: NonNullable<ChatResults["strategy"]> }) {
