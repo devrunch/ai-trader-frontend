@@ -177,11 +177,6 @@ function TradeCard({ trade }: { trade: NonNullable<ChatResults["trade"]> }) {
         <p className="text-muted-foreground leading-snug pt-1 font-sans">{trade.note}</p>
       )}
 
-      {trade.executable_here === false && trade.executable_note && (
-        <p className="text-muted-foreground leading-snug pt-1 font-sans">
-          {trade.executable_note}
-        </p>
-      )}
     </div>
   );
 }

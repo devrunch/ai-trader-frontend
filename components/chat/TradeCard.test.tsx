@@ -103,13 +103,15 @@ describe("TradeCard", () => {
     expect(screen.queryByText("Size")).toBeNull();
   });
 
-  it("says a short cannot be placed here", () => {
-    show({
-      direction: "SELL",
-      executable_here: false,
-      executable_note: "The built-in paper account is long-only. Place it at your broker.",
-    });
-    expect(screen.getByText(/long-only/)).toBeTruthy();
+  it("shows a short without commenting on where it could be placed", () => {
+    // It used to say "the built-in paper account is long-only, place it at
+    // your broker" — true, and commentary about the user rather than the
+    // trade.
+    show({ direction: "SELL", short: true });
+    expect(screen.getByText("SELL")).toBeTruthy();
+    const text = (document.body.textContent ?? "").toLowerCase();
+    expect(text).not.toContain("broker");
+    expect(text).not.toContain("long-only");
   });
 
   it("shows nothing at all when the turn computed no trade", () => {

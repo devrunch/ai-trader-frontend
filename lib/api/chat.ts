@@ -96,9 +96,17 @@ export interface ChatTradeResult {
    *  balance this app can see belongs to a paper simulator, and sizing against
    *  it produced claims about the user's finances. */
   position_size?: { unit?: string; lot_size?: number; risk_per_lot?: number };
-  /** False for a short: the built-in paper account is long-only. */
-  executable_here?: boolean;
-  executable_note?: string;
+  /** A short. Flagged as a fact about the trade, not as commentary on where
+   *  the user could place it — the card says nothing about their account. */
+  short?: boolean;
+  /** Every confluence vote, so "which indicators disagreed" has an answer. */
+  confluence?: {
+    agreement_pct: number;
+    families: Record<string, number>;
+    agreed: string[];
+    disagreed: string[];
+    votes: { indicator: string; family: string; agrees: boolean; reading: string }[];
+  };
   note?: string;
 }
 
