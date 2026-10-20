@@ -86,22 +86,21 @@ describe("TradeCard", () => {
   });
 
   it("reports risk per lot for a contract and per unit otherwise", () => {
-    show({ position_size: { unit: "lots", lot_size: 65, risk_per_lot: 5694, lots: 2 } });
+    show({ position_size: { unit: "lots", lot_size: 65, risk_per_lot: 5694 } });
     expect(screen.getByText("5,694 / lot")).toBeTruthy();
-    expect(screen.getByText("2 lots")).toBeTruthy();
   });
 
-  it("carries the reason sizing was left to the user", () => {
-    // The paper account is NSE/BSE only and holds simulated money; sizing an
-    // NFO contract against it produced advice about the user's finances.
-    show({
-      position_size: {
-        unit: "lots", lot_size: 65, risk_per_lot: 5694, lots: null,
-        how_to_size: "One lot risks 5,694 at this stop. This platform's paper account is NSE/BSE only and is simulated money.",
-      },
-    });
-    expect(screen.getByText(/paper account is NSE\/BSE only/)).toBeTruthy();
-    expect(screen.queryByText(/lots$/)).toBeNull();
+  it("never shows a position size or says anything about the account", () => {
+    // It cannot see what the user trades with. The only balance available
+    // belongs to a paper simulator, and every attempt to use it became a
+    // claim about their finances — first as advice, then as a paragraph
+    // explaining why it was not advising. Both are noise between candles.
+    show({ position_size: { unit: "lots", lot_size: 65, risk_per_lot: 5694 } });
+    const text = document.body.textContent ?? "";
+    for (const word of ["account", "capital", "afford", "simulated", "broker"]) {
+      expect(text.toLowerCase()).not.toContain(word);
+    }
+    expect(screen.queryByText("Size")).toBeNull();
   });
 
   it("says a short cannot be placed here", () => {

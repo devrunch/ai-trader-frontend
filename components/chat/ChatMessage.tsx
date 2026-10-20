@@ -126,8 +126,6 @@ function TradeCard({ trade }: { trade: NonNullable<ChatResults["trade"]> }) {
     : passes ? trade.direction : `${trade.direction} · REJECTED`;
 
   const size = trade.position_size;
-  const lots = size?.lots;
-  const shares = size?.shares;
 
   return (
     <div className="mt-2 pt-2 border-t border-border/60 font-mono text-[11px] space-y-1">
@@ -159,8 +157,7 @@ function TradeCard({ trade }: { trade: NonNullable<ChatResults["trade"]> }) {
                 : `${fmt(trade.risk_per_unit)} / unit`
             }
           />
-          {lots != null && <Row label="Size" value={`${lots} lot${lots === 1 ? "" : "s"}`} />}
-          {lots == null && shares != null && <Row label="Size" value={`${shares} units`} />}
+
         </>
       )}
 
@@ -178,11 +175,6 @@ function TradeCard({ trade }: { trade: NonNullable<ChatResults["trade"]> }) {
 
       {notApplicable && trade.note && (
         <p className="text-muted-foreground leading-snug pt-1 font-sans">{trade.note}</p>
-      )}
-
-      {/* Sizing the user still has to do themselves, and why. */}
-      {size?.how_to_size && (
-        <p className="text-muted-foreground leading-snug pt-1 font-sans">{size.how_to_size}</p>
       )}
 
       {trade.executable_here === false && trade.executable_note && (

@@ -92,12 +92,10 @@ export interface ChatTradeResult {
     resolved_symbol: string; underlying: string; instrument_type: string;
     lot_size: number | null; expiry: string; strike?: number | null;
   };
-  position_size?: {
-    unit?: string; lots?: number | null; lot_size?: number;
-    risk_per_lot?: number; notional_per_lot?: number;
-    shares?: number; sized_against?: string | null;
-    how_to_size?: string; margin_note?: string; note?: string; error?: string;
-  };
+  /** What one lot costs if the stop is hit. Never a position size: the only
+   *  balance this app can see belongs to a paper simulator, and sizing against
+   *  it produced claims about the user's finances. */
+  position_size?: { unit?: string; lot_size?: number; risk_per_lot?: number };
   /** False for a short: the built-in paper account is long-only. */
   executable_here?: boolean;
   executable_note?: string;
