@@ -251,6 +251,72 @@ describe("LightweightChartsAdapter", () => {
     adapter.dispose();
   });
 
+  /* The volume pane used to stop at the last fetched bar while the candles ran
+     on, because nothing between fetches ever touched the volume series. On a
+     1m chart that showed as a volume histogram ending minutes short of the
+     price, and "Vol —" under the bar the crosshair was actually on. */
+  describe("live volume", () => {
+    const seed = [
+      { time: 1767000840, open: 99, high: 100, low: 98, close: 99.5, volume: 900 },
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    ];
+
+    async function mounted() {
+      const el = document.createElement("div");
+      document.body.appendChild(el);
+      const adapter = new LightweightChartsAdapter();
+      await adapter.mount(el, { bars: [...seed] });
+      return adapter;
+    }
+
+    it("counts the forming bar's volume from what has traded since it opened", async () => {
+      const adapter = await mounted();
+      adapter.pushLiveTick(103, 1767000990, 50_000); // opens a bar at a 50,000 running total
+      expect(adapter.__test_lastBar().volume).toBe(0);
+      adapter.pushLiveTick(104, 1767001000, 50_400);
+      expect(adapter.__test_lastBar().volume).toBe(400);
+      adapter.pushLiveTick(105, 1767001010, 50_900);
+      expect(adapter.__test_lastBar().volume).toBe(900);
+      adapter.dispose();
+    });
+
+    it("starts the next bar's count over, not from the day's total", async () => {
+      const adapter = await mounted();
+      adapter.pushLiveTick(103, 1767000990, 50_000);
+      adapter.pushLiveTick(104, 1767001000, 50_400);
+      adapter.pushLiveTick(105, 1767001050, 50_600); // a full period on -- new bar
+      expect(adapter.__test_barCount()).toBe(4);
+      expect(adapter.__test_lastBar().volume).toBe(0);
+      adapter.pushLiveTick(106, 1767001060, 50_700);
+      expect(adapter.__test_lastBar().volume).toBe(100);
+      adapter.dispose();
+    });
+
+    it("leaves volume null on a feed that counts none, rather than claiming zero", async () => {
+      const adapter = await mounted();
+      adapter.pushLiveTick(103, 1767000990); // forex: a price, no traded quantity
+      expect(adapter.__test_lastBar().volume).toBeNull();
+      adapter.dispose();
+    });
+
+    it("keeps the fetched volume on a bar that opened before this adapter was watching", async () => {
+      const adapter = await mounted();
+      // No baseline yet, so there is nothing honest to subtract -- inferring
+      // one would freeze the bar at whatever had traded by fetch time.
+      adapter.pushLiveTick(103, 1767000930, 50_000);
+      expect(adapter.__test_lastBar().volume).toBe(1000);
+      adapter.dispose();
+    });
+
+    it("never reports a negative volume when the running total resets under it", async () => {
+      const adapter = await mounted();
+      adapter.pushLiveTick(103, 1767000990, 50_000);
+      adapter.pushLiveTick(104, 1767001000, 20); // a session rollover, or a feed restart
+      expect(adapter.__test_lastBar().volume).toBe(0);
+      adapter.dispose();
+    });
+  });
+
   it("addDrawings attaches one primitive per drawing, grouped, and removeDrawingsByGroup removes exactly that group", async () => {
     const el = document.createElement("div");
     document.body.appendChild(el);

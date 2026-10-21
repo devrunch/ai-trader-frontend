@@ -112,6 +112,9 @@ export class LightweightChartsAdapter implements ChartAdapter {
   private renderer: ChartRendererHandle | null = null;
   private chartType: ChartTypeId = "candles";
   private volumeSeries: ISeriesApi<"Histogram"> | null = null;
+  /** The feed's day-cumulative volume as the forming bar opened. Null until
+   *  this adapter has watched a bar open, and on feeds that count no volume. */
+  private liveVolumeBase: number | null = null;
   private pineSeries = new Map<string, ISeriesApi<SeriesType>[]>();
   /** plotshape()/plotchar() output, one combined marker-plugin handle per
    *  indicator id (all of that indicator's boolean plots merged into one
@@ -621,7 +624,8 @@ export class LightweightChartsAdapter implements ChartAdapter {
    *  live watching Deriv's ~1/sec ticks (frequent enough to make the chart
    *  visibly frozen on one candle within minutes) -- same bug for every
    *  exchange, just far less obvious against Kite's slower cadence. */
-  pushLiveTick(price: number, nowSec: number = Math.floor(Date.now() / 1000)): void {
+  pushLiveTick(price: number, nowSec: number = Math.floor(Date.now() / 1000),
+               cumVolume: number | null = null): void {
     if (!this.renderer || !this.volumeSeries || this.bars.length === 0) return;
     const last = this.bars[this.bars.length - 1];
     const intervalSec = this.bars.length >= 2
@@ -636,19 +640,48 @@ export class LightweightChartsAdapter implements ChartAdapter {
       // current period -- never backfills fabricated flat candles for
       // periods with no real tick data.
       const bucketStart = last.time + Math.floor((nowSec - last.time) / intervalSec) * intervalSec;
-      // volume null, not 0: a live tick carries a price, never a traded
-      // quantity. A zero here is the same fabrication the rest of the chart
-      // stopped making -- and on a forex symbol, which has no volume at all,
-      // it is what put "Vol 0" under the forming bar.
-      const newBar = { time: bucketStart, open: price, high: price, low: price, close: price, volume: null };
+      // A feed that reports the day's running total lets this bar carry real
+      // volume: its share is whatever trades between now and its close, so
+      // the count starts at zero here and grows with each tick. A feed that
+      // counts no volume (forex) leaves it null, not 0 -- "nobody counted" is
+      // a different claim from "nothing traded", and 0 is what used to put
+      // "Vol 0" under the forming bar of a symbol that has no volume at all.
+      this.liveVolumeBase = cumVolume;
+      const newBar = { time: bucketStart, open: price, high: price, low: price, close: price,
+                       volume: cumVolume == null ? null : 0 };
       this.bars.push(newBar);
       this.renderer.updateBar(newBar);
+      this.updateVolumePoint(newBar);
       return;
     }
 
-    const updated = { ...last, close: price, high: Math.max(last.high, price), low: Math.min(last.low, price) };
+    // Until this adapter has seen a bar open, there is no baseline to subtract
+    // and the bar keeps the volume the historical fetch gave it. Inferring a
+    // baseline from that figure would quietly freeze the bar at whatever had
+    // traded by fetch time; one bar of stale volume is the honest cost.
+    const traded = this.liveVolumeBase != null && cumVolume != null
+      ? Math.max(0, cumVolume - this.liveVolumeBase)
+      : last.volume;
+    const updated = { ...last, close: price, high: Math.max(last.high, price),
+                      low: Math.min(last.low, price), volume: traded };
     this.bars[this.bars.length - 1] = updated;
     this.renderer.updateBar(updated);
+    this.updateVolumePoint(updated);
+  }
+
+  /** The forming bar's own histogram point. The volume pane used to stop at
+   *  the last fetched bar while the candles ran on, because nothing here ever
+   *  touched the volume series between fetches. */
+  private updateVolumePoint(bar: ApiOhlcBar): void {
+    if (!this.volumeSeries) return;
+    if (bar.volume == null) {
+      this.volumeSeries.update({ time: bar.time as never });
+      return;
+    }
+    const colors = this.vsaEnabled ? computeVsaColors(this.bars) : null;
+    const color = colors ? colors[colors.length - 1]
+      : bar.close >= bar.open ? "#16c78466" : "#f0525d66";
+    this.volumeSeries.update({ time: bar.time as never, value: bar.volume, color });
   }
 
   addDrawings(drawings: ChatDrawing[], groupId: string): void {

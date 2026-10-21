@@ -66,6 +66,10 @@ export interface Quote {
   bid?: number | null;
   ask?: number | null;
   spread?: number | null;
+  /** The day's cumulative traded quantity, as the feed reports it — not this
+   *  tick's size. Absent on feeds that count no volume at all (forex), so the
+   *  chart can tell "nothing traded" from "nobody counted". */
+  volume?: number | null;
 }
 
 export const getMarketNews = (symbols?: string, limit = 15) => {

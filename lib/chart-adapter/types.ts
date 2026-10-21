@@ -105,8 +105,10 @@ export interface ChartAdapter {
   /** nowSec overrides the wall-clock "is a new candle period starting"
    *  check -- production callers never pass it (real time), tests pass a
    *  fixed value so a sample bar's timestamp from months ago doesn't
-   *  always look "expired" against the real clock. */
-  pushLiveTick(price: number, nowSec?: number): void;
+   *  always look "expired" against the real clock. cumVolume is the day's
+   *  cumulative traded quantity from the same tick, when the feed counts one;
+   *  the forming bar's own volume is whatever has traded since it opened. */
+  pushLiveTick(price: number, nowSec?: number, cumVolume?: number | null): void;
 
   /** Which symbol/exchange the chart is currently showing -- lets
    *  attachPineIndicator pass real syminfo through to the sandbox so

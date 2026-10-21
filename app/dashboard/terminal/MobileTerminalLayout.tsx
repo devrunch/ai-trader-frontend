@@ -80,7 +80,7 @@ export function MobileTerminalLayout(props: DesktopTerminalLayoutProps) {
               <p className="text-xs text-muted-foreground mt-1">Try another symbol, or check the exchange.</p>
             </div>
           ) : (
-            <CandlestickChart fill bars={bars} signal={null} livePrice={quote?.ltp}
+            <CandlestickChart fill bars={bars} signal={null} livePrice={quote?.ltp} liveVolume={quote?.volume ?? null}
               chartType={chartType}
               onReady={(c) => { chartRef.current = c; setChartReady(n => n + 1); }}
               onLoadMore={handleLoadMore}

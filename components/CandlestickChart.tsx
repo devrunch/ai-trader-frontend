@@ -57,7 +57,7 @@ function paneRectsEqual(a: PaneRect[], b: PaneRect[]): boolean {
  * for a fixed size (landing demo). `onReady` hands the adapter instance to
  * the parent so a drawing-tools rail / AI agent can draw on it. */
 export function CandlestickChart({
-  bars, signal, height = 320, fill = false, livePrice, onReady, onLoadMore, onFetchTicks,
+  bars, signal, height = 320, fill = false, livePrice, liveVolume, onReady, onLoadMore, onFetchTicks,
   chartType = "candles", legendItems = [], onToggleVisible, onDelete, onOpenSettings,
 }: {
   bars: ApiOhlcBar[];
@@ -65,6 +65,10 @@ export function CandlestickChart({
   height?: number;
   fill?: boolean;
   livePrice?: number;
+  /** The same tick's day-cumulative traded quantity, so the forming bar gets
+   *  a real volume instead of leaving a gap at the right edge of the volume
+   *  pane. Undefined on feeds that count no volume. */
+  liveVolume?: number | null;
   onReady?: (adapter: ChartAdapter) => void;
   /** Main pane's chart type -- read once at mount (a symbol/interval change
    *  remounts the chart from scratch anyway, see the bars effect below) and
@@ -159,8 +163,8 @@ export function CandlestickChart({
   // Live tick — update the forming candle in place when the quote moves.
   useEffect(() => {
     if (!livePrice || livePrice <= 0) return;
-    adapterRef.current?.pushLiveTick(livePrice);
-  }, [livePrice]);
+    adapterRef.current?.pushLiveTick(livePrice, undefined, liveVolume ?? null);
+  }, [livePrice, liveVolume]);
 
   // A chart-type change while already mounted swaps the main series in place
   // (see LightweightChartsAdapter.setChartType) instead of going through the
