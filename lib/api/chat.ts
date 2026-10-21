@@ -149,6 +149,10 @@ export interface ChatTurnRecord {
   /** What the agent answered. */
   answer: string;
   events: AgentEvent[];
+  /** The trade card, a strategy, a simulation — stored so a reloaded
+   *  conversation shows what the answer was describing, not just the prose. */
+  results?: ChatResults;
+  drawings?: ChatDrawing[];
   usage?: Record<string, number>;
   stopReason?: string;
   createdAt: string;

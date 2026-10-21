@@ -101,7 +101,13 @@ export function ChatPanel({
         setMessages(
           turns.flatMap((t): ChatMsg[] => [
             { role: "user", content: t.message },
-            { role: "assistant", content: t.answer, turnId: t.turnId },
+            // results and drawings too, or a restored conversation shows the
+            // prose without the trade card it was describing — the entry, stop
+            // and target are the half a trader acts on.
+            {
+              role: "assistant", content: t.answer, turnId: t.turnId,
+              results: t.results, drawings: t.drawings,
+            },
           ]),
         );
       })
