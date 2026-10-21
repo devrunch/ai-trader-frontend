@@ -581,14 +581,37 @@ export default function TerminalPage() {
   // (see handleLoadMore). Reset whenever the base fetch below re-runs, so a
   // symbol/period/exchange change doesn't inherit a previous pan's widening.
   const loadedDaysRef = useRef(PERIODS[0].days);
+  // Which fetch the chart is currently showing. Every bars request takes a
+  // ticket and only spends it if it is still the latest — without this, a slow
+  // response for the symbol you just left lands after the one you switched to
+  // and repaints its candles under the new symbol's header.
+  const barsFetchRef = useRef(0);
+  // The instrument on screen. Period and interval changes keep the old candles
+  // while the new ones load (same prices, finer or coarser); a different
+  // instrument must blank instead, because the wrong instrument's prices read
+  // as this one's.
+  const barsSymbolRef = useRef("");
   useEffect(() => {
     const pCfg = PERIODS.find(p => p.label === period) ?? PERIODS[0];
     const { fetchInterval, bucketSize, guardSessionBoundary } = resolveInterval(candleInterval);
     loadedDaysRef.current = pCfg.days;
+    const ticket = ++barsFetchRef.current;
+    const instrument = `${activeSymbol}:${activeExchange}`;
+    if (barsSymbolRef.current !== instrument) {
+      barsSymbolRef.current = instrument;
+      setBars([]);
+      setBarsLoading(true);
+    }
     getHistorical(activeSymbol, activeExchange, fetchInterval, pCfg.days)
-      .then(({ bars: b }) => { setBars(aggregateBars(b, bucketSize, guardSessionBoundary)); setBarsError(""); })
-      .catch(e => { setBars([]); setBarsError(errorMessage(e, "Couldn't load the chart.")); })
-      .finally(() => setBarsLoading(false));
+      .then(({ bars: b }) => {
+        if (ticket !== barsFetchRef.current) return;
+        setBars(aggregateBars(b, bucketSize, guardSessionBoundary)); setBarsError("");
+      })
+      .catch(e => {
+        if (ticket !== barsFetchRef.current) return;
+        setBars([]); setBarsError(errorMessage(e, "Couldn't load the chart."));
+      })
+      .finally(() => { if (ticket === barsFetchRef.current) setBarsLoading(false); });
   }, [activeSymbol, activeExchange, period, candleInterval, barsReload]);
 
   /* Bars older than what's currently loaded, for panning back past the
@@ -600,12 +623,22 @@ export default function TerminalPage() {
      the old/new fetch boundary differently than it would within one fetch. */
   const handleLoadMore = useCallback((oldestLoadedTime: number): Promise<ApiOhlcBar[]> => {
     const { fetchInterval, bucketSize, guardSessionBoundary } = resolveInterval(candleInterval);
-    const nextDays = Math.min(loadedDaysRef.current * 2, 3650);
-    if (nextDays <= loadedDaysRef.current) return Promise.resolve([]);
+    const prevDays = loadedDaysRef.current;
+    const nextDays = Math.min(prevDays * 2, 3650);
+    if (nextDays <= prevDays) return Promise.resolve([]);
     loadedDaysRef.current = nextDays;
+    const ticket = barsFetchRef.current;
     return getHistorical(activeSymbol, activeExchange, fetchInterval, nextDays)
-      .then(({ bars: b }) => olderBars(aggregateBars(b, bucketSize, guardSessionBoundary), oldestLoadedTime))
-      .catch(() => []);
+      // Same ticket check as the base fetch: panning back and then switching
+      // symbol must not prepend the old instrument's history to the new one.
+      .then(({ bars: b }) => ticket !== barsFetchRef.current ? []
+        : olderBars(aggregateBars(b, bucketSize, guardSessionBoundary), oldestLoadedTime))
+      .catch(() => {
+        // Give the window back, or one failed widening skips that span for
+        // good and the next pan doubles past it, leaving a hole.
+        if (ticket === barsFetchRef.current) loadedDaysRef.current = prevDays;
+        return [];
+      });
   }, [activeSymbol, activeExchange, candleInterval]);
 
   /* Volume Footprint/TPO's own data source -- real ECN ticks, FOREX/metals
