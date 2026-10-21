@@ -115,6 +115,8 @@ export class LightweightChartsAdapter implements ChartAdapter {
   /** The feed's day-cumulative volume as the forming bar opened. Null until
    *  this adapter has watched a bar open, and on feeds that count no volume. */
   private liveVolumeBase: number | null = null;
+  /** Set from the bars this chart was seeded with -- see mount. */
+  private feedHasVolume = false;
   private pineSeries = new Map<string, ISeriesApi<SeriesType>[]>();
   /** plotshape()/plotchar() output, one combined marker-plugin handle per
    *  indicator id (all of that indicator's boolean plots merged into one
@@ -171,6 +173,10 @@ export class LightweightChartsAdapter implements ChartAdapter {
 
   async mount(el: HTMLElement, options: ChartMountOptions): Promise<void> {
     this.bars = options.bars;
+    // Whether this instrument has volume at all. An index publishes a number
+    // nobody trades, and forex counts no volume -- their bars come back with
+    // none, and a live quote's 0 for them is a placeholder, not a count.
+    this.feedHasVolume = options.bars.some((b) => b.volume != null);
     this.onLoadMoreFn = options.onLoadMore;
     this.onFetchTicksFn = options.onFetchTicks;
     this.containerEl = el;
@@ -627,6 +633,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
   pushLiveTick(price: number, nowSec: number = Math.floor(Date.now() / 1000),
                cumVolume: number | null = null): void {
     if (!this.renderer || !this.volumeSeries || this.bars.length === 0) return;
+    if (!this.feedHasVolume) cumVolume = null;
     const last = this.bars[this.bars.length - 1];
     const intervalSec = this.bars.length >= 2
       ? this.bars[this.bars.length - 1].time - this.bars[this.bars.length - 2].time

@@ -299,6 +299,25 @@ describe("LightweightChartsAdapter", () => {
       adapter.dispose();
     });
 
+    it("ignores a running total on an instrument whose own bars have no volume", async () => {
+      // An index is a published number nobody trades, so a 0 or a stale
+      // running total on its quote is a placeholder. Whether the feed carries
+      // one is not this chart's call -- it goes by what the bars themselves
+      // counted.
+      const el = document.createElement("div");
+      document.body.appendChild(el);
+      const adapter = new LightweightChartsAdapter();
+      await adapter.mount(el, { bars: [
+        { time: 1767000840, open: 99, high: 100, low: 98, close: 99.5, volume: null },
+        { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: null },
+      ] });
+      adapter.pushLiveTick(103, 1767000990, 50_000);
+      expect(adapter.__test_lastBar().volume).toBeNull();
+      adapter.pushLiveTick(104, 1767001000, 50_400);
+      expect(adapter.__test_lastBar().volume).toBeNull();
+      adapter.dispose();
+    });
+
     it("keeps the fetched volume on a bar that opened before this adapter was watching", async () => {
       const adapter = await mounted();
       // No baseline yet, so there is nothing honest to subtract -- inferring
