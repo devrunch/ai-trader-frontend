@@ -336,6 +336,34 @@ describe("LightweightChartsAdapter", () => {
     });
   });
 
+  it("a gap in the ticks does not stretch how long the next candle lasts", async () => {
+    /* The candle length used to come from the last two bars. A quiet stretch
+       (market closed, tab backgrounded) left those two a gap apart, the next
+       call read the gap as the candle length, and one candle then absorbed
+       every tick for that whole span -- drawing a quarter-hour of movement as
+       one minute bar. Each gap made the next one worse. */
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars: [
+      { time: 1767000840, open: 99, high: 100, low: 98, close: 99.5, volume: 900 },
+      { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    ] });
+
+    // Ten minutes of silence, then a tick: one bar at the current period.
+    adapter.pushLiveTick(100, 1767001500);
+    expect(adapter.__test_barCount()).toBe(3);
+    expect(adapter.__test_lastBar().time).toBe(1767001500);
+
+    // A minute later. The candle is still a minute long, so this starts a new
+    // bar rather than extending the one before it to a 73-point body.
+    adapter.pushLiveTick(173, 1767001560);
+    expect(adapter.__test_barCount()).toBe(4);
+    expect(adapter.__test_lastBar().open).toBe(173);
+    expect(adapter.__test_barAt(1).high).toBe(100); // the gap bar, closed where it opened
+    adapter.dispose();
+  });
+
   it("addDrawings attaches one primitive per drawing, grouped, and removeDrawingsByGroup removes exactly that group", async () => {
     const el = document.createElement("div");
     document.body.appendChild(el);

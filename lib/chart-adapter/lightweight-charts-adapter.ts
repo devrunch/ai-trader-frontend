@@ -635,9 +635,7 @@ export class LightweightChartsAdapter implements ChartAdapter {
     if (!this.renderer || !this.volumeSeries || this.bars.length === 0) return;
     if (!this.feedHasVolume) cumVolume = null;
     const last = this.bars[this.bars.length - 1];
-    const intervalSec = this.bars.length >= 2
-      ? this.bars[this.bars.length - 1].time - this.bars[this.bars.length - 2].time
-      : 60; // No second bar to measure from yet -- 1m, this app's shortest real interval.
+    const intervalSec = this.barPeriodSec();
 
     if (nowSec >= last.time + intervalSec) {
       // Snapped to the interval grid from the last bar's own time, not raw
@@ -674,6 +672,29 @@ export class LightweightChartsAdapter implements ChartAdapter {
     this.bars[this.bars.length - 1] = updated;
     this.renderer.updateBar(updated);
     this.updateVolumePoint(updated);
+  }
+
+  /** How long one candle lasts, as the smallest gap the bars themselves show.
+   *
+   *  Measured off the last two bars instead, it compounded: ticks go quiet
+   *  (market closed, tab backgrounded), the next tick opens a bar in the
+   *  CURRENT period, and those two bars are now a ten-minute gap apart. The
+   *  next call reads that gap as the candle length and lets one candle absorb
+   *  every tick for ten minutes -- drawing a quarter-hour of movement as a
+   *  single minute bar, which is a price move that never happened. Seen on
+   *  NIFTY 50 over the close: one candle 22,738 to 22,811.
+   *
+   *  The smallest gap is the real period, because an overnight, a weekend and
+   *  a quiet stretch can only ever make gaps LARGER than it. Capped at the
+   *  tail so a long history costs nothing to scan. */
+  private barPeriodSec(): number {
+    let smallest = Infinity;
+    for (let i = Math.max(1, this.bars.length - 60); i < this.bars.length; i++) {
+      const gap = this.bars[i].time - this.bars[i - 1].time;
+      if (gap > 0 && gap < smallest) smallest = gap;
+    }
+    // Nothing to measure from yet -- 1m, this app's shortest real interval.
+    return Number.isFinite(smallest) ? smallest : 60;
   }
 
   /** The forming bar's own histogram point. The volume pane used to stop at
