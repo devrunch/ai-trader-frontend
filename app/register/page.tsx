@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { API_BASE_URL } from "@/lib/api/client";
+import { safeNextPath } from "@/lib/safe-next";
 
 export default function RegisterPage() {
   const [email,    setEmail]    = useState("");
@@ -11,6 +12,20 @@ export default function RegisterPage() {
   const [error,    setError]    = useState("");
   const [loading,  setLoading]  = useState(false);
   const [success,  setSuccess]  = useState(false);
+
+  // Carried on to the other form, so someone who arrives from a shared
+  // link and switches between signing in and signing up still lands
+  // where the link pointed.
+  const [nextQuery, setNextQuery] = useState("");
+  useEffect(() => {
+    const next = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+    // Seeding state from something only readable after mount, which is
+    // the React-documented pattern -- not the sync-a-derived-value
+    // antipattern this rule targets. Reading window.location during
+    // render would diverge from the server HTML instead.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNextQuery(next ? `?next=${encodeURIComponent(next)}` : "");
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,7 +45,14 @@ export default function RegisterPage() {
         throw new Error(data?.message ?? "Registration failed");
       }
       setSuccess(true);
-      setTimeout(() => { window.location.href = "/dashboard/terminal"; }, 700);
+      setTimeout(() => {
+        // Back to wherever the visitor was headed before the sign-in,
+        // query string and all -- a shared terminal link carries its
+        // symbol there, and a bare /dashboard/terminal opens the default
+        // one instead. Validated, because this arrives from the URL bar.
+        const next = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+        window.location.href = next ?? "/dashboard/terminal";
+      }, 700);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
       setLoading(false);
@@ -117,7 +139,7 @@ export default function RegisterPage() {
 
           <p className="text-center text-muted-foreground text-xs mt-5">
             Already have an account?{" "}
-            <Link href="/login" className="text-link font-medium hover:underline">Sign in</Link>
+            <Link href={`/login${nextQuery}`} className="text-link font-medium hover:underline">Sign in</Link>
           </p>
         </div>
 
