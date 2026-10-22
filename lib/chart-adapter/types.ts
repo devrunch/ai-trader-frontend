@@ -110,6 +110,10 @@ export interface ChartAdapter {
    *  the forming bar's own volume is whatever has traded since it opened. */
   pushLiveTick(price: number, nowSec?: number, cumVolume?: number | null): void;
 
+  /** Attach several indicators in one round trip, sending the bars once
+   *  instead of once per indicator. Returns the ids that actually attached. */
+  attachPineIndicators(specs: PineIndicatorSpec[]): Promise<string[]>;
+
   /** Which symbol/exchange the chart is currently showing -- lets
    *  attachPineIndicator pass real syminfo through to the sandbox so
    *  scripts reading syminfo.* or timeframe.* resolve real values. Call

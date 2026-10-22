@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
 import { LightweightChartsAdapter, findBarByTime } from "./lightweight-charts-adapter";
-import { runPineIndicator } from "@/lib/api/pine";
+import { runPineIndicator, runPineIndicatorBatch } from "@/lib/api/pine";
 import { CHART_TYPES } from "./chart-types/registry";
 import type { ChartTypeId } from "./chart-types/types";
 
@@ -17,6 +17,7 @@ vi.mock("@/lib/api/pine", () => ({
     ] },
     error: null,
   }),
+  runPineIndicatorBatch: vi.fn(),
 }));
 
 describe("findBarByTime", () => {
@@ -891,6 +892,84 @@ describe("breakout probability overlay", () => {
     // setChartType rebuilds the main series; an overlay that is not
     // re-attached disappears without any error to explain why.
     expect(adapter.__test_hasBreakout("bp")).toBe(true);
+    adapter.dispose();
+  });
+});
+
+describe("attachPineIndicators", () => {
+  /* Every indicator on a chart runs over the same bars. Attaching them one
+     at a time uploaded those bars once per indicator -- ~83 KB apiece on a
+     1m chart, so ten indicators sent the same payload ten times over ten
+     round trips. The runs are cheap and linear; the duplicate upload was
+     the cost. */
+  const bars = [
+    { time: 1767000900, open: 100, high: 101, low: 99, close: 100.5, volume: 1000 },
+    { time: 1767000960, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1200 },
+  ];
+  const plots = { "P": [{ time: 1767000900000, value: 1 }, { time: 1767000960000, value: 2 }] };
+  const spec = (id: string) => ({ id, label: id, source: `//${id}`, pane: "main" as const });
+
+  async function mounted() {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const adapter = new LightweightChartsAdapter();
+    await adapter.mount(el, { bars });
+    return adapter;
+  }
+
+  it("sends every indicator in one request, with the bars once", async () => {
+    vi.mocked(runPineIndicatorBatch).mockResolvedValueOnce({
+      results: ["a", "b", "c"].map((id) => ({ id, ok: true, plots, error: null })),
+    });
+    const adapter = await mounted();
+
+    const attached = await adapter.attachPineIndicators([spec("a"), spec("b"), spec("c")]);
+
+    expect(runPineIndicatorBatch).toHaveBeenCalledTimes(1);
+    expect(attached).toEqual(["a", "b", "c"]);
+    const [scripts, sentBars] = vi.mocked(runPineIndicatorBatch).mock.calls[0];
+    expect(scripts.map((s) => s.id)).toEqual(["a", "b", "c"]);
+    expect(sentBars).toHaveLength(2);
+    adapter.dispose();
+  });
+
+  it("matches results to specs by id, not by position", async () => {
+    // The sandbox returns a list. Zipping it against the request would put
+    // every plot after a dropped entry onto the wrong indicator.
+    vi.mocked(runPineIndicatorBatch).mockResolvedValueOnce({
+      results: [
+        { id: "c", ok: true, plots, error: null },
+        { id: "a", ok: true, plots, error: null },
+      ],
+    });
+    const adapter = await mounted();
+
+    const attached = await adapter.attachPineIndicators([spec("a"), spec("b"), spec("c")]);
+
+    expect(attached).toEqual(["a", "c"]);   // "b" came back from nothing
+    adapter.dispose();
+  });
+
+  it("leaves out a script the sandbox rejected and keeps the rest", async () => {
+    vi.mocked(runPineIndicatorBatch).mockResolvedValueOnce({
+      results: [
+        { id: "a", ok: true, plots, error: null },
+        { id: "b", ok: false, plots: null, error: "line 1: no such function" },
+        { id: "c", ok: true, plots, error: null },
+      ],
+    });
+    const adapter = await mounted();
+
+    expect(await adapter.attachPineIndicators([spec("a"), spec("b"), spec("c")])).toEqual(["a", "c"]);
+    adapter.dispose();
+  });
+
+  it("does not call the sandbox at all for an empty list", async () => {
+    const adapter = await mounted();
+    vi.mocked(runPineIndicatorBatch).mockClear();
+
+    expect(await adapter.attachPineIndicators([])).toEqual([]);
+    expect(runPineIndicatorBatch).not.toHaveBeenCalled();
     adapter.dispose();
   });
 });

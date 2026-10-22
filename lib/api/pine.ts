@@ -93,3 +93,42 @@ export const runPineIndicator = (
       inputOverrides,
     }),
   });
+
+/** PineTS's own bar shape. `openTime` is in MILLISECONDS -- see the note in
+ *  runPineIndicator for why that conversion lives here and not in callers. */
+const toPineBars = (bars: ApiOhlcBar[]) =>
+  bars.map((b) => ({ open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume, openTime: b.time * 1000 }));
+
+export interface PineBatchScript {
+  id: string;
+  source: string;
+  inputOverrides?: Record<string, unknown>;
+}
+
+export type PineBatchResult = PineRunResult & { id: string };
+
+/** Several indicators against ONE copy of the bars.
+ *
+ *  Every indicator on a chart runs over the same bars, so calling
+ *  runPineIndicator per indicator uploaded them once each -- on a 1m chart
+ *  that is ~83 KB apiece, so ten indicators sent the same payload ten times
+ *  over ten round trips. The runs themselves are cheap and linear; the
+ *  duplicate upload was the cost.
+ *
+ *  Results come back keyed by the caller's own id, not by position, and one
+ *  failed entry sits beside the successful ones. */
+export const runPineIndicatorBatch = (
+  scripts: PineBatchScript[],
+  bars: ApiOhlcBar[],
+  symbol?: string,
+  exchange?: string,
+) =>
+  req<{ results: PineBatchResult[] }>("/api/pine/run-batch", {
+    method: "POST",
+    body: JSON.stringify({
+      bars: toPineBars(bars),
+      scripts: scripts.map((s) => ({ id: s.id, source: s.source, mode: "indicator", inputOverrides: s.inputOverrides })),
+      symbol,
+      exchange,
+    }),
+  });

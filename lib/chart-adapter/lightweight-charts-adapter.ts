@@ -2,7 +2,7 @@ import { createChart, createSeriesMarkers, HistogramSeries, TickMarkType, type I
 import type { ApiOhlcBar } from "@/lib/api";
 import type { ChatDrawing } from "@/lib/api/chat";
 import type { SavedDrawing } from "@/lib/api/charts";
-import { runPineIndicator, type PineInputMeta } from "@/lib/api/pine";
+import { runPineIndicator, runPineIndicatorBatch, type PineInputMeta, type PineRunResult } from "@/lib/api/pine";
 import { attachPinePlotsToPane } from "./pine-render";
 import { createSegmentPrimitive, createRayPrimitive, createRectPrimitive, createFibonacciPrimitive, createTradeMarkerPrimitive, type DrawPoint } from "./drawing-primitives";
 import { createVolumeProfilePrimitive, type VolumeProfileHandle, type VolumeProfileMode } from "./volume-profile-primitive";
@@ -529,6 +529,34 @@ export class LightweightChartsAdapter implements ChartAdapter {
 
   async attachPineIndicator(spec: PineIndicatorSpec): Promise<string | null> {
     const result = await runPineIndicator(spec.source, this.bars, this.activeSymbol, this.activeExchange, spec.params);
+    return this.placePineResult(spec, result);
+  }
+
+  /** Every indicator on this chart runs over the same bars, so one request
+   *  carries them once instead of once per indicator -- see
+   *  runPineIndicatorBatch. Returns the ids that actually attached; a script
+   *  the sandbox rejected is left out rather than reported as attached, the
+   *  same as attachPineIndicator's null. */
+  async attachPineIndicators(specs: PineIndicatorSpec[]): Promise<string[]> {
+    if (specs.length === 0) return [];
+    const { results } = await runPineIndicatorBatch(
+      specs.map((s) => ({ id: s.id, source: s.source, inputOverrides: s.params })),
+      this.bars, this.activeSymbol, this.activeExchange,
+    );
+    // Keyed by id, never by position: a dropped result would otherwise put
+    // every plot after it on the wrong indicator.
+    const bySpecId = new Map(results.map((r) => [r.id, r]));
+    const attached: string[] = [];
+    for (const spec of specs) {
+      const result = bySpecId.get(spec.id);
+      if (result && this.placePineResult(spec, result)) attached.push(spec.id);
+    }
+    return attached;
+  }
+
+  /** Wire one finished sandbox run onto the chart. Shared by both attach
+   *  paths so they cannot drift apart. */
+  private placePineResult(spec: PineIndicatorSpec, result: PineRunResult): string | null {
     // Previously returned spec.id here too -- indistinguishable from success,
     // so the caller that checks for a null return (and the one that doesn't)
     // both treated a failed sandbox run as a silent no-op attach.

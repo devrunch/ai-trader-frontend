@@ -231,15 +231,48 @@ export default function TerminalPage() {
     // not delete an id the new one has already attached.
     const owner = attachedPineRef.current;
     owner.add(spec.id);
-    chart.attachPineIndicator(spec).then((id) => {
+    const failed = () => {
       if (attachedPineRef.current !== owner) return;   // belongs to a chart that is gone
-      if (id) { setMetaVersion((v) => v + 1); return; }
       // Allow a retry: this indicator isn't really attached, so the diffing
       // effect (or the retry button below) should be free to try it again.
       owner.delete(spec.id);
       setIndicatorError({ spec, message: `"${spec.label}" couldn't load -- the chart engine may be busy.` });
-    });
+    };
+    chart.attachPineIndicator(spec).then((id) => {
+      if (attachedPineRef.current !== owner) return;
+      if (id) setMetaVersion((v) => v + 1);
+      else failed();
+      // A rejection (the request itself failing, not the script) left the id
+      // marked attached with nothing drawn and no error shown -- the same
+      // dead end a failed run used to be.
+    }).catch(failed);
   }, []);
+
+  /** Attach a group in one round trip. The bars go up once instead of once
+   *  per indicator, which is the whole cost of attaching several at a time
+   *  -- see runPineIndicatorBatch. */
+  const attachMany = useCallback((chart: ChartAdapter, specs: AttachedIndicator[]) => {
+    if (specs.length === 0) return;
+    if (specs.length === 1) { attachOne(chart, specs[0]); return; }
+    const owner = attachedPineRef.current;
+    for (const spec of specs) owner.add(spec.id);
+    const reportFailed = (failed: AttachedIndicator[]) => {
+      if (attachedPineRef.current !== owner || failed.length === 0) return;
+      for (const spec of failed) owner.delete(spec.id);
+      const more = failed.length - 1;
+      setIndicatorError({
+        spec: failed[0],
+        message: `"${failed[0].label}"${more > 0 ? ` and ${more} other${more > 1 ? "s" : ""}` : ""}`
+          + " couldn't load -- the chart engine may be busy.",
+      });
+    };
+    chart.attachPineIndicators(specs).then((ids) => {
+      if (attachedPineRef.current !== owner) return;
+      if (ids.length > 0) setMetaVersion((v) => v + 1);
+      const ok = new Set(ids);
+      reportFailed(specs.filter((spec) => !ok.has(spec.id)));
+    }).catch(() => reportFailed(specs));
+  }, [attachOne]);
 
   /* Both attach-diffing effects below track what is on the chart in a ref.
      A rebuild (the bars effect in CandlestickChart remounts on every bars
@@ -325,17 +358,15 @@ export default function TerminalPage() {
       chart.removeIndicator(id);
       attached.delete(id);
     }
-    for (const spec of indicators) {
-      if (attached.has(spec.id)) continue;
-      // Marked synchronously, before the attach call resolves: attachPineIndicator
-      // awaits a network round-trip, so without this a second effect run racing
-      // ahead of that promise (React StrictMode's double-invoke in dev, or a
-      // rapid indicators-state change) would see `attached` not-yet-updated and
-      // attach the same indicator a second time -- a real duplicate pane, caught
-      // by hand when RSI showed up twice from a single toggle.
-      attachOne(chart, spec);
-    }
-  }, [indicators, chartReady, attachOne]);
+    // One request for the whole group. Marked attached synchronously inside
+    // attachMany, before the call resolves: it awaits a network round-trip,
+    // so without that a second effect run racing ahead of the promise (React
+    // StrictMode's double-invoke in dev, or a rapid indicators-state change)
+    // would see `attached` not-yet-updated and attach the same indicator a
+    // second time -- a real duplicate pane, caught by hand when RSI showed up
+    // twice from a single toggle.
+    attachMany(chart, indicators.filter((spec) => !attached.has(spec.id)));
+  }, [indicators, chartReady, attachMany]);
 
   // Volume Profile isn't a Pine script (no time axis of its own -- see
   // volume-profile-primitive.ts), so it doesn't go through the indicators
