@@ -209,6 +209,10 @@ export default function TerminalPage() {
      against the adapter (there is no bulk "set these" call under the Pine
      model, unlike the old klinecharts name-list). */
   const attachedPineRef = useRef<Set<string>>(new Set());
+  // Declared here, beside the Pine set, because the reset effect below clears
+  // both. Its own diffing effect lives with the rest of the Volume Profile
+  // wiring further down.
+  const attachedVpRef = useRef<Set<string>>(new Set());
   // The Pine sandbox can fail transiently (a subprocess race under load, a
   // timeout) with nothing else wrong -- attachPineIndicator used to return
   // the indicator's own id even on failure, so this was unreachable: the
@@ -222,15 +226,34 @@ export default function TerminalPage() {
   // attach's data is ready once the async call resolves.
   const [metaVersion, setMetaVersion] = useState(0);
   const attachOne = useCallback((chart: ChartAdapter, spec: AttachedIndicator) => {
-    attachedPineRef.current.add(spec.id);
+    // Captured, not re-read on resolve: a chart rebuild swaps the set out
+    // from under an in-flight attach, and a failure from the old chart must
+    // not delete an id the new one has already attached.
+    const owner = attachedPineRef.current;
+    owner.add(spec.id);
     chart.attachPineIndicator(spec).then((id) => {
+      if (attachedPineRef.current !== owner) return;   // belongs to a chart that is gone
       if (id) { setMetaVersion((v) => v + 1); return; }
       // Allow a retry: this indicator isn't really attached, so the diffing
       // effect (or the retry button below) should be free to try it again.
-      attachedPineRef.current.delete(spec.id);
+      owner.delete(spec.id);
       setIndicatorError({ spec, message: `"${spec.label}" couldn't load -- the chart engine may be busy.` });
     });
   }, []);
+
+  /* Both attach-diffing effects below track what is on the chart in a ref.
+     A rebuild (the bars effect in CandlestickChart remounts on every bars
+     change -- symbol, interval, period) hands them a fresh adapter holding
+     nothing, so a set carried over from the previous one reads as "already
+     attached" and they restore none of it: the indicator keeps its legend
+     row and its place in the saved layout while drawing nothing.
+
+     Declared before those effects on purpose -- React runs effects in
+     declaration order, so both sets are empty by the time they diff. */
+  useEffect(() => {
+    attachedPineRef.current = new Set();
+    attachedVpRef.current = new Set();
+  }, [chartReady]);
 
   // Reading chartRef.current during render is unsafe (nothing guarantees a
   // re-render when the ref's target data changes) -- this effect is the one
@@ -320,7 +343,6 @@ export default function TerminalPage() {
   // Session alongside Visible Range, can be on at once) and its own diffing
   // effect, mirroring the Pine one's attach/remove shape.
   const [volumeProfiles, setVolumeProfiles] = useState<Set<string>>(new Set());
-  const attachedVpRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
